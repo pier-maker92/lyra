@@ -3,4 +3,5 @@ pillow
 chromadb 
 torch==2.8.0 
 transformers==5.0.0
-sentence-transformers
+sentence-transformers["video"]
+sentence-transformers["image"]
