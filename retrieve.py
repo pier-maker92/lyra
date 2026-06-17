@@ -6,6 +6,8 @@ import av
 from PIL import Image
 import numpy as np
 
+from moods import MOODS, get_query_prompt
+
 
 def load_video_frames(video_path, fps=None, max_frames=8, target_height=720):
     container = av.open(video_path)
@@ -69,6 +71,15 @@ def load_video_frames(video_path, fps=None, max_frames=8, target_height=720):
     return frames
 
 
+def get_track_id(chunk_id: str, metadata: dict) -> str:
+    track_id = metadata.get("track_id")
+    if track_id:
+        return str(track_id)
+    if "_stanza_" in chunk_id:
+        return chunk_id.rsplit("_stanza_", 1)[0]
+    return chunk_id
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Retrieve song lyrics based on a video or image query."
@@ -84,7 +95,8 @@ def main():
         "--mood",
         type=str,
         default=None,
-        help="Thematic preference for mood (e.g. love, fun, hilarious, adventure, chill/relax)",
+        choices=MOODS,
+        help=f"Thematic mood for lyrics matching ({', '.join(MOODS)})",
     )
     parser.add_argument(
         "--fps",
@@ -118,19 +130,20 @@ def main():
             media_data = media_data.resize((new_w, 720), Image.Resampling.LANCZOS)
         media_key = "image"
 
-    if args.mood:
-        query_prompt = f"Find {args.mood} song lyrics that describe this {media_key}: "
-    else:
-        query_prompt = f"Find song lyrics that describe this {media_key}: "
+    system_prompt = get_query_prompt(args.mood)
+    user_text = "Match these visuals to song lyrics:"
 
-    # Embed the multimodal input
-    query_embedding = model.encode([{media_key: media_data, "text": query_prompt}])[
-        0
-    ].tolist()
+    if args.mood:
+        print(f"Using mood: {args.mood}")
+
+    query_embedding = model.encode(
+        [{media_key: media_data, "text": user_text}],
+        prompt=system_prompt,
+    )[0].tolist()
 
     print("Connecting to ChromaDB...")
     client = chromadb.PersistentClient(path="./lyrics_catalog_db")
-    collection = client.get_collection(name="song_lyrics")
+    collection = client.get_collection(name="song_lyrics_min")
 
     # Build the where clause for metadata filtering
     where_conditions = []
@@ -164,15 +177,15 @@ def main():
     seen_tracks = set()
 
     for i in range(len(results["ids"][0])):
+        chunk_id = results["ids"][0][i]
         metadata = results["metadatas"][0][i]
-        track_id = metadata.get("track_id")
+        track_id = get_track_id(chunk_id, metadata)
 
-        # Deduplicate by track_id
         if track_id not in seen_tracks:
             seen_tracks.add(track_id)
             unique_results.append(
                 {
-                    "id": results["ids"][0][i],
+                    "id": chunk_id,
                     "distance": results["distances"][0][i],
                     "metadata": metadata,
                     "document": results["documents"][0][i],

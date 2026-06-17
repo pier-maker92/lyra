@@ -50,7 +50,7 @@ def main():
     print("Initializing ChromaDB...")
     client = chromadb.PersistentClient(path="./lyrics_catalog_db")
     collection = client.get_or_create_collection(
-        name="song_lyrics", metadata={"hnsw:space": "cosine"}
+        name="song_lyrics_min", metadata={"hnsw:space": "cosine"}
     )
 
     print(f"Collecting all stanzas from {args.input_file}...")
@@ -92,7 +92,6 @@ def main():
             for j, stanza in enumerate(stanzas):
                 chunk_id = f"{track_id}_stanza_{j}"
 
-                # Setup prompt as requested
                 lyric_prompt = f"Represent the following song lyrics for retrieving matching visual scenes or videos: {stanza}"
 
                 all_prompts.append(lyric_prompt)
@@ -123,7 +122,6 @@ def main():
         batch_documents = all_documents[i : i + args.batch_size]
         batch_metadatas = all_metadatas[i : i + args.batch_size]
 
-        # Calculate embeddings for the batch
         embeddings = model.encode(
             batch_prompts, batch_size=args.batch_size, show_progress_bar=False
         ).tolist()
