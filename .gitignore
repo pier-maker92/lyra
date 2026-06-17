@@ -1,0 +1,5 @@
+.env
+.venv/
+lyrics_catalog_db/
+__pycache__/
+queries_720p/
