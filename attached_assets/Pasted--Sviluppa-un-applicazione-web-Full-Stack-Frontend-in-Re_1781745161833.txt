@@ -1,0 +1,64 @@
+**Sviluppa un'applicazione web Full-Stack (Frontend in React/Vite, Backend in Python con FastAPI) per un motore di ricerca "Visual-to-Lyrics".**
+
+L'obiettivo dell'applicazione è creare un'esperienza utente in stile "Instagram Reels / TikTok". L'utente carica un video o una foto, il sistema analizza i visual, esegue il matching del contesto visivo con i testi delle canzoni per 5 "mood" differenti contemporaneamente, e l'utente naviga i risultati sul proprio video usando le gesture (swipe).
+
+Crea i file necessari, imposta le configurazioni per eseguire sia FastAPI che React contemporaneamente su Replit, e segui rigorosamente queste direttive:
+
+### 1. Backend (Python + FastAPI)
+
+* **Setup API:** Crea un endpoint `POST /analyze` che accetti file video o immagini (`UploadFile`).
+* **Modello AI:** Inizializza il modello globalmente per evitare ricaricamenti: `model = SentenceTransformer("Qwen/Qwen3-VL-Embedding-2B", trust_remote_code=True, device="cuda" if torch.cuda.is_available() else "cpu")`.
+* **Elaborazione Media:** Estrai i frame se è un video (max 8 frame uniformi tramite libreria `av`), oppure apri l'immagine (`PIL`). Esegui un resize mantenendo l'aspect ratio con un'altezza massima di `720px`.
+* **Logica dei Mood:** Inserisci e utilizza ESATTAMENTE questo codice per gestire i prompt:
+
+```python
+MOODS = ["love", "adventure", "funny", "chill", "party"]
+
+DEFAULT_QUERY_PROMPT = "Retrieve song lyrics that visually match this scene."
+
+MOOD_QUERY_PROMPTS = {
+    "love": "Retrieve song lyrics that match this visual scene. Prioritize lyrics with a romantic mood: longing, devotion, intimacy, tenderness, passion, and heartfelt emotion.",
+    "adventure": "Retrieve song lyrics that match this visual scene. Prioritize lyrics with an adventurous mood: exploration, freedom, epic journeys, bold action, and triumphant energy.",
+    "funny": "Retrieve song lyrics that match this visual scene. Prioritize lyrics with a humorous mood: wit, absurdity, playful irony, comedy, and lighthearted fun.",
+    "chill": "Retrieve song lyrics that match this visual scene. Prioritize lyrics with a relaxed mood: calm, ease, reflection, gentle warmth, and peaceful atmosphere.",
+    "party": "Retrieve song lyrics that match this visual scene. Prioritize lyrics with a celebratory mood: high energy, dancing, excitement, nightlife, and hype.",
+}
+
+def get_query_prompt(mood: str | None) -> str:
+    if not mood:
+        return DEFAULT_QUERY_PROMPT
+    return MOOD_QUERY_PROMPTS.get(mood.lower().strip(), f"Retrieve song lyrics that match this visual scene with a {mood} emotional tone.")
+
+```
+
+* **Elaborazione Batch & Retrieval:**
+* Per il media caricato, genera gli embedding per *tutti e 5* i mood elencati in `MOODS` in un singolo batch (o iterando velocemente).
+* Connettiti a `chromadb.PersistentClient(path="./lyrics_catalog_db")` alla collection `song_lyrics_min`.
+* Esegui la ricerca per ogni mood (chiedi top_k=15 per permettere la deduplicazione).
+* Deduplica i risultati basandoti sul campo `track_id` estratto dai metadati (`metadatas`) o parserizzando il `chunk_id`. Mantieni i top 5 risultati unici per mood.
+
+
+* **Integrazione Musixmatch:** Per ogni traccia unica trovata, simula (o usa se disponibile) una classe `MusixmatchClient` per recuperare i dettagli: `track_name`, `artist_name`, e `stanza` (il frammento di testo).
+* **Risposta JSON:** L'API deve restituire un dizionario strutturato così:
+`{ "love": [{lyric, artist, track, distance}...], "adventure": [...], "funny": [...], "chill": [...], "party": [...] }`
+
+### 2. Frontend (React / UI Stile TikTok)
+
+* **Home / Acquisizione Media:** Interfaccia pulita per aprire la fotocamera nativa o la libreria (tramite `<input type="file" accept="video/*,image/*" capture="environment" />`).
+* **Stato di Caricamento:** Durante la chiamata al backend, mostra uno spinner e il testo "Analizzando la scena e cercando i testi perfetti...".
+* **Player (Modalità Reels):**
+* Il media caricato dall'utente diventa lo sfondo a schermo intero (`100vh`, `object-fit: cover`, in loop e muto se video).
+* **Overlay UI:** Posiziona in basso a sinistra (o centrato) il rendering dinamico delle lyrics (`stanza` in testo grande, grassetto, bianco con ombra per massima leggibilità), `artist_name` e `track_name`. In alto (o come badge fluttuante) mostra il Mood attivo.
+
+
+* **Gestione Gesture (Richiede `react-swipeable` o simili):**
+* **Swipe Sinistra / Destra:** Passa al mood successivo/precedente nell'array `MOODS`. Aggiungi un'animazione di scivolamento laterale.
+* **Swipe Su / Giù:** Passa al risultato successivo/precedente (i top 5 match della canzone) *all'interno del mood attualmente selezionato*. Aggiungi una piccola animazione di dissolvenza/slide verticale per il testo.
+
+
+
+### 3. Requisiti di Sistema e Setup
+
+* Usa le librerie corrette nei `requirements.txt` (`fastapi`, `uvicorn`, `python-multipart`, `sentence-transformers`, `chromadb`, `av`, `Pillow`, `torch`).
+* Usa `npm` o `yarn` per installare `react`, `react-dom`, `lucide-react` (per le icone), `framer-motion` (per le animazioni fluide dei testi) e `react-swipeable` (per gli swipe).
+* Implementa un file per avviare contemporaneamente Uvicorn (porta 8000) e il server Vite (porta 3000 o 5173). Assicurati di impostare correttamente il CORS in FastAPI per permettere le chiamate dal frontend locale.
