@@ -49,29 +49,97 @@ function VideoBackground({ uri }: { uri: string }) {
   );
 }
 
-function LyricBlock({ match, animKey }: { match: LyricMatch; animKey: string }) {
-  const words = useMemo(
-    () => match.lyric.split(/\s+/).filter(Boolean),
+function withAlpha(hex: string, alpha: number) {
+  const h = hex.replace("#", "");
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function EdgeGlow({ color }: { color: string }) {
+  const clear = withAlpha(color, 0);
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <LinearGradient
+        colors={[withAlpha(color, 0.6), clear]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+        style={[styles.glow, { top: 0, left: 0, right: 0, height: 170 }]}
+      />
+      <LinearGradient
+        colors={[clear, withAlpha(color, 0.55)]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+        style={[styles.glow, { bottom: 0, left: 0, right: 0, height: 210 }]}
+      />
+      <LinearGradient
+        colors={[withAlpha(color, 0.5), clear]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={[styles.glow, { top: 0, bottom: 0, left: 0, width: 110 }]}
+      />
+      <LinearGradient
+        colors={[clear, withAlpha(color, 0.5)]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={[styles.glow, { top: 0, bottom: 0, right: 0, width: 110 }]}
+      />
+    </View>
+  );
+}
+
+function LyricBlock({
+  match,
+  animKey,
+  color,
+}: {
+  match: LyricMatch;
+  animKey: string;
+  color: string;
+}) {
+  const lines = useMemo(
+    () =>
+      match.lyric
+        .split("/")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => line.split(/\s+/).filter(Boolean)),
     [match.lyric],
   );
 
+  const lineOffsets = useMemo(() => {
+    const offsets: number[] = [];
+    let acc = 0;
+    for (const line of lines) {
+      offsets.push(acc);
+      acc += line.length;
+    }
+    return offsets;
+  }, [lines]);
+
+  const totalWords = useMemo(
+    () => lines.reduce((n, line) => n + line.length, 0),
+    [lines],
+  );
+
   const wordAnims = useMemo(
-    () => words.map(() => new Animated.Value(0)),
+    () => Array.from({ length: totalWords }, () => new Animated.Value(0)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [match.lyric],
+    [animKey],
   );
   const trackAnim = useMemo(
     () => new Animated.Value(0),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [match.lyric],
+    [animKey],
   );
 
   useEffect(() => {
     const reveals = wordAnims.map((v, i) =>
       Animated.timing(v, {
         toValue: 1,
-        duration: 460,
-        delay: i * 90,
+        duration: 440,
+        delay: i * 65,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }),
@@ -81,47 +149,53 @@ function LyricBlock({ match, animKey }: { match: LyricMatch; animKey: string }) 
       Animated.timing(trackAnim, {
         toValue: 1,
         duration: 380,
-        delay: words.length * 90 + 140,
+        delay: totalWords * 65 + 140,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }),
     ]);
     anim.start();
     return () => anim.stop();
-  }, [wordAnims, trackAnim, words.length]);
+  }, [wordAnims, trackAnim, totalWords]);
 
   return (
     <View>
-      <View style={styles.lyricWrap}>
-        {words.map((w, i) => (
-          <Animated.Text
-            key={`${animKey}-${i}`}
-            style={[
-              styles.lyric,
-              {
-                opacity: wordAnims[i],
-                transform: [
+      {lines.map((lineWords, li) => (
+        <View key={`${animKey}-line-${li}`} style={styles.lyricWrap}>
+          {lineWords.map((w, wi) => {
+            const v = wordAnims[lineOffsets[li] + wi];
+            return (
+              <Animated.Text
+                key={`${animKey}-${li}-${wi}`}
+                style={[
+                  styles.lyric,
                   {
-                    translateY: wordAnims[i].interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [24, 0],
-                    }),
+                    color,
+                    opacity: v,
+                    transform: [
+                      {
+                        translateY: v.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [24, 0],
+                        }),
+                      },
+                      {
+                        scale: v.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.88, 1],
+                        }),
+                      },
+                    ],
                   },
-                  {
-                    scale: wordAnims[i].interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [0.88, 1],
-                    }),
-                  },
-                ],
-              },
-            ]}
-          >
-            {w}
-            {i < words.length - 1 ? " " : ""}
-          </Animated.Text>
-        ))}
-      </View>
+                ]}
+              >
+                {w}
+                {wi < lineWords.length - 1 ? " " : ""}
+              </Animated.Text>
+            );
+          })}
+        </View>
+      ))}
       <Animated.View style={[styles.trackRow, { opacity: trackAnim }]}>
         <Ionicons
           name="musical-notes"
@@ -232,6 +306,8 @@ export function ReelsPlayer({ media, results, onReset }: Props) {
         pointerEvents="none"
       />
 
+      <EdgeGlow color={meta.color} />
+
       {/* Top bar */}
       <View style={[styles.topBar, { paddingTop: topInset + 10 }]}>
         <Pressable
@@ -275,6 +351,7 @@ export function ReelsPlayer({ media, results, onReset }: Props) {
           <LyricBlock
             match={currentMatch}
             animKey={`${moodIndex}-${matchIndex}`}
+            color={meta.color}
           />
         ) : (
           <View style={styles.emptyState}>
@@ -366,6 +443,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     paddingHorizontal: 24,
   },
+  glow: { position: "absolute" },
   lyricWrap: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -376,9 +454,9 @@ const styles = StyleSheet.create({
     fontSize: 27,
     lineHeight: 36,
     color: "#ffffff",
-    textShadowColor: "rgba(0,0,0,0.6)",
+    textShadowColor: "rgba(0,0,0,0.85)",
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 8,
+    textShadowRadius: 12,
   },
   trackRow: {
     flexDirection: "row",
