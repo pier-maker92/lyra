@@ -4,9 +4,16 @@ import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { StatusBar } from "expo-status-bar";
 import { useVideoPlayer, VideoView } from "expo-video";
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Animated,
+  Easing,
   Platform,
   Pressable,
   StyleSheet,
@@ -42,6 +49,93 @@ function VideoBackground({ uri }: { uri: string }) {
   );
 }
 
+function LyricBlock({ match, animKey }: { match: LyricMatch; animKey: string }) {
+  const words = useMemo(
+    () => match.lyric.split(/\s+/).filter(Boolean),
+    [match.lyric],
+  );
+
+  const wordAnims = useMemo(
+    () => words.map(() => new Animated.Value(0)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [match.lyric],
+  );
+  const trackAnim = useMemo(
+    () => new Animated.Value(0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [match.lyric],
+  );
+
+  useEffect(() => {
+    const reveals = wordAnims.map((v, i) =>
+      Animated.timing(v, {
+        toValue: 1,
+        duration: 460,
+        delay: i * 90,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    );
+    const anim = Animated.parallel([
+      ...reveals,
+      Animated.timing(trackAnim, {
+        toValue: 1,
+        duration: 380,
+        delay: words.length * 90 + 140,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]);
+    anim.start();
+    return () => anim.stop();
+  }, [wordAnims, trackAnim, words.length]);
+
+  return (
+    <View>
+      <View style={styles.lyricWrap}>
+        {words.map((w, i) => (
+          <Animated.Text
+            key={`${animKey}-${i}`}
+            style={[
+              styles.lyric,
+              {
+                opacity: wordAnims[i],
+                transform: [
+                  {
+                    translateY: wordAnims[i].interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [24, 0],
+                    }),
+                  },
+                  {
+                    scale: wordAnims[i].interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.88, 1],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            {w}
+            {i < words.length - 1 ? " " : ""}
+          </Animated.Text>
+        ))}
+      </View>
+      <Animated.View style={[styles.trackRow, { opacity: trackAnim }]}>
+        <Ionicons
+          name="musical-notes"
+          size={15}
+          color="rgba(255,255,255,0.85)"
+        />
+        <Text style={styles.trackText} numberOfLines={1}>
+          {match.artist} — {match.track}
+        </Text>
+      </Animated.View>
+    </View>
+  );
+}
+
 export function ReelsPlayer({ media, results, onReset }: Props) {
   const insets = useSafeAreaInsets();
   const topInset = Platform.OS === "web" ? 67 : insets.top;
@@ -53,9 +147,6 @@ export function ReelsPlayer({ media, results, onReset }: Props) {
   const moodIndexRef = useRef(0);
   const matchIndexRef = useRef(0);
 
-  const lyricOpacity = useRef(new Animated.Value(1)).current;
-  const lyricTranslate = useRef(new Animated.Value(0)).current;
-
   const matchesByMood = useMemo(
     () => MOODS.map((mood) => results[mood] ?? []),
     [results],
@@ -64,60 +155,31 @@ export function ReelsPlayer({ media, results, onReset }: Props) {
   const matchesByMoodRef = useRef(matchesByMood);
   matchesByMoodRef.current = matchesByMood;
 
-  const animateLyric = useCallback(
-    (fromY: number) => {
-      lyricOpacity.setValue(0);
-      lyricTranslate.setValue(fromY);
-      Animated.parallel([
-        Animated.timing(lyricOpacity, {
-          toValue: 1,
-          duration: 260,
-          useNativeDriver: true,
-        }),
-        Animated.spring(lyricTranslate, {
-          toValue: 0,
-          useNativeDriver: true,
-          friction: 8,
-          tension: 60,
-        }),
-      ]).start();
-    },
-    [lyricOpacity, lyricTranslate],
-  );
+  const changeMood = useCallback((dir: number) => {
+    const next = (moodIndexRef.current + dir + MOODS.length) % MOODS.length;
+    moodIndexRef.current = next;
+    matchIndexRef.current = 0;
+    setMoodIndex(next);
+    setMatchIndex(0);
+    if (Platform.OS !== "web") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+  }, []);
 
-  const changeMood = useCallback(
-    (dir: number) => {
-      const next = (moodIndexRef.current + dir + MOODS.length) % MOODS.length;
-      moodIndexRef.current = next;
-      matchIndexRef.current = 0;
-      setMoodIndex(next);
-      setMatchIndex(0);
-      if (Platform.OS !== "web") {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      }
-      animateLyric(0);
-    },
-    [animateLyric],
-  );
-
-  const changeMatch = useCallback(
-    (dir: number) => {
-      const list = matchesByMoodRef.current[moodIndexRef.current];
-      if (!list || list.length === 0) return;
-      const next = Math.min(
-        Math.max(matchIndexRef.current + dir, 0),
-        list.length - 1,
-      );
-      if (next === matchIndexRef.current) return;
-      matchIndexRef.current = next;
-      setMatchIndex(next);
-      if (Platform.OS !== "web") {
-        Haptics.selectionAsync();
-      }
-      animateLyric(dir > 0 ? 26 : -26);
-    },
-    [animateLyric],
-  );
+  const changeMatch = useCallback((dir: number) => {
+    const list = matchesByMoodRef.current[moodIndexRef.current];
+    if (!list || list.length === 0) return;
+    const next = Math.min(
+      Math.max(matchIndexRef.current + dir, 0),
+      list.length - 1,
+    );
+    if (next === matchIndexRef.current) return;
+    matchIndexRef.current = next;
+    setMatchIndex(next);
+    if (Platform.OS !== "web") {
+      Haptics.selectionAsync();
+    }
+  }, []);
 
   const swipeGesture = useMemo(
     () =>
@@ -210,24 +272,10 @@ export function ReelsPlayer({ media, results, onReset }: Props) {
       {/* Bottom content */}
       <View style={[styles.bottom, { paddingBottom: bottomInset + 28 }]}>
         {currentMatch ? (
-          <Animated.View
-            style={{
-              opacity: lyricOpacity,
-              transform: [{ translateY: lyricTranslate }],
-            }}
-          >
-            <Text style={styles.lyric}>{currentMatch.lyric}</Text>
-            <View style={styles.trackRow}>
-              <Ionicons
-                name="musical-notes"
-                size={15}
-                color="rgba(255,255,255,0.85)"
-              />
-              <Text style={styles.trackText} numberOfLines={1}>
-                {currentMatch.artist} — {currentMatch.track}
-              </Text>
-            </View>
-          </Animated.View>
+          <LyricBlock
+            match={currentMatch}
+            animKey={`${moodIndex}-${matchIndex}`}
+          />
         ) : (
           <View style={styles.emptyState}>
             <Ionicons
@@ -250,11 +298,6 @@ export function ReelsPlayer({ media, results, onReset }: Props) {
             />
             <Text style={styles.hintText}>Mood</Text>
           </View>
-          {currentList.length > 0 ? (
-            <Text style={styles.counter}>
-              {matchIndex + 1} / {currentList.length}
-            </Text>
-          ) : null}
           <View style={styles.hint}>
             <Ionicons
               name="swap-vertical"
@@ -323,6 +366,11 @@ const styles = StyleSheet.create({
     bottom: 0,
     paddingHorizontal: 24,
   },
+  lyricWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "flex-end",
+  },
   lyric: {
     fontFamily: "Inter_700Bold",
     fontSize: 27,
@@ -361,10 +409,5 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
     fontSize: 13,
     color: "rgba(255,255,255,0.55)",
-  },
-  counter: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 13,
-    color: "rgba(255,255,255,0.9)",
   },
 });
