@@ -41,64 +41,6 @@ function withAlpha(hex: string, alpha: number) {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-function EdgeGlow({ color }: { color: string }) {
-  const clear = withAlpha(color, 0);
-  const pulse = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    pulse.setValue(0);
-    const anim = Animated.sequence([
-      Animated.timing(pulse, {
-        toValue: 1,
-        duration: 170,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: true,
-      }),
-      Animated.delay(250),
-      Animated.timing(pulse, {
-        toValue: 0,
-        duration: 480,
-        easing: Easing.in(Easing.quad),
-        useNativeDriver: true,
-      }),
-    ]);
-    anim.start();
-    return () => anim.stop();
-  }, [color, pulse]);
-
-  return (
-    <Animated.View
-      style={[StyleSheet.absoluteFill, { opacity: pulse }]}
-      pointerEvents="none"
-    >
-      <LinearGradient
-        colors={[withAlpha(color, 0.38), clear]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={[styles.glow, { top: 0, bottom: 0, left: 0, width: 14 }]}
-      />
-      <LinearGradient
-        colors={[clear, withAlpha(color, 0.38)]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={[styles.glow, { top: 0, bottom: 0, right: 0, width: 14 }]}
-      />
-      <LinearGradient
-        colors={[withAlpha(color, 0.38), clear]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={[styles.glow, { top: 0, left: 0, right: 0, height: 14 }]}
-      />
-      <LinearGradient
-        colors={[clear, withAlpha(color, 0.38)]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={[styles.glow, { bottom: 0, left: 0, right: 0, height: 14 }]}
-      />
-    </Animated.View>
-  );
-}
-
 function LyricBlock({
   match,
   animKey,
@@ -304,19 +246,34 @@ export function ReelsPlayer({ media, results, onReset }: Props) {
         />
       )}
 
+      {/* Subtle top scrim so the logo and top bar stay legible */}
       <LinearGradient
-        colors={[
-          "rgba(0,0,0,0.55)",
-          "rgba(0,0,0,0.05)",
-          "rgba(0,0,0,0.35)",
-          "rgba(0,0,0,0.9)",
-        ]}
-        locations={[0, 0.32, 0.6, 1]}
+        colors={["rgba(0,0,0,0.45)", "rgba(0,0,0,0)"]}
+        locations={[0, 0.22]}
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
       />
 
-      <EdgeGlow color={meta.color} />
+      {/* Mood-colored wash rising from the bottom */}
+      <LinearGradient
+        colors={[
+          withAlpha(meta.color, 0),
+          withAlpha(meta.color, 0.5),
+          withAlpha(meta.color, 0.95),
+        ]}
+        locations={[0.32, 0.7, 1]}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
+
+      {/* Gentle dark anchor under the lyrics to keep white text readable
+          across bright moods (yellow/green) without hiding the hue */}
+      <LinearGradient
+        colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.32)"]}
+        locations={[0.62, 1]}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
 
       {/* Top bar */}
       <View style={[styles.topBar, { paddingTop: topInset + 10 }]}>
@@ -453,7 +410,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     paddingHorizontal: 24,
   },
-  glow: { position: "absolute" },
   lyricWrap: {
     flexDirection: "row",
     flexWrap: "wrap",
