@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { StatusBar } from "expo-status-bar";
 import React from "react";
@@ -10,6 +11,8 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+const lyraLogo = require("../assets/images/lyra-logo.png");
 
 interface Props {
   onUseCamera: () => void;
@@ -33,12 +36,14 @@ export function HomeScreen({ onUseCamera, onUseLibrary }: Props) {
 
       <View style={[styles.content, { paddingTop: topInset + 24 }]}>
         <View style={styles.hero}>
-          <View style={styles.logoBadge}>
-            <Ionicons name="eye" size={34} color="#ffffff" />
-          </View>
-          <Text style={styles.title}>Visual Lyrics</Text>
+          <Image
+            source={lyraLogo}
+            style={styles.logo}
+            contentFit="contain"
+            accessibilityLabel="LYRA"
+          />
           <Text style={styles.subtitle}>
-            Inquadra un momento. Trova le parole che lo cantano.
+            Lost for words? Say it with lyrics
           </Text>
         </View>
 
@@ -79,31 +84,20 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 28,
   },
-  hero: { flex: 1, justifyContent: "center", alignItems: "flex-start" },
-  logoBadge: {
-    width: 72,
-    height: 72,
-    borderRadius: 24,
-    backgroundColor: "rgba(168,85,247,0.25)",
-    borderWidth: 1,
-    borderColor: "rgba(168,85,247,0.5)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 24,
-  },
-  title: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 44,
-    color: "#ffffff",
-    letterSpacing: -1,
+  hero: { flex: 1, justifyContent: "center", alignItems: "center" },
+  logo: {
+    width: 264,
+    height: 264,
   },
   subtitle: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 17,
+    fontFamily: "Inter_300Light",
+    fontSize: 16,
     lineHeight: 24,
+    letterSpacing: 1.5,
     color: "rgba(255,255,255,0.65)",
-    marginTop: 12,
+    marginTop: 16,
     maxWidth: 320,
+    textAlign: "center",
   },
   actions: { gap: 14 },
   primaryButton: {
