@@ -3,6 +3,7 @@ import React from "react";
 import { StyleSheet } from "react-native";
 
 export function VideoBackground({ uri }: { uri: string }) {
+  "use no memo";
   const player = useVideoPlayer(uri, (p) => {
     p.loop = true;
     p.muted = true;

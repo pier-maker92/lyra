@@ -51,3 +51,11 @@ post-merge setup script does **not** restart it. After any merge that touches
 it keeps serving the pre-merge code. Symptom of the stale process: `/api/analyze`
 returns 200 but with empty lyric/artist/track fields (old code read Chroma
 metadata that does not exist in the real DB) and Musixmatch is never called.
+
+## React Compiler breaks expo-video useVideoPlayer
+
+The mobile app has `experiments.reactCompiler: true` (app.json). The React Compiler
+mis-compiles components that call expo-video `useVideoPlayer`, throwing a runtime
+"Invalid hook call" that the ErrorBoundary swallows — so the video silently never
+mounts/plays. Fix: add the `"use no memo";` directive as the first statement inside
+any component that calls `useVideoPlayer` (see components/VideoBackground.tsx).
