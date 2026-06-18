@@ -44,11 +44,9 @@ function withAlpha(hex: string, alpha: number) {
 function LyricBlock({
   match,
   animKey,
-  color,
 }: {
   match: LyricMatch;
   animKey: string;
-  color: string;
 }) {
   const lines = useMemo(
     () =>
@@ -122,7 +120,6 @@ function LyricBlock({
                 style={[
                   styles.lyric,
                   {
-                    color,
                     opacity: v,
                     transform: [
                       {
@@ -318,7 +315,6 @@ export function ReelsPlayer({ media, results, onReset }: Props) {
           <LyricBlock
             match={currentMatch}
             animKey={`${moodIndex}-${matchIndex}`}
-            color={meta.color}
           />
         ) : (
           <View style={styles.emptyState}>
