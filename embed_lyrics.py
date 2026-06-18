@@ -57,10 +57,6 @@ def main():
         tqdm(read_concatenated_json(args.input_file), desc="Reading dataset")
     ):
         try:
-            artist_name = track_data.get("artist_name", "")
-            if not artist_name and "track_data" in track_data:
-                artist_name = track_data["track_data"].get("artist_name", "")
-
             # Extract genre
             genre = "Unknown"
             try:
@@ -88,10 +84,7 @@ def main():
                 all_ids.append(chunk_id)
                 all_metadatas.append(
                     {
-                        "artist_name": artist_name,
                         "genre": genre,
-                        "track_id": track_id,
-                        "stanza_index": j,
                     }
                 )
 
