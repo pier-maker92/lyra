@@ -59,33 +59,59 @@ function withAlpha(hex: string, alpha: number) {
 
 function EdgeGlow({ color }: { color: string }) {
   const clear = withAlpha(color, 0);
+  const pulse = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    pulse.setValue(0);
+    const anim = Animated.sequence([
+      Animated.timing(pulse, {
+        toValue: 1,
+        duration: 260,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+      Animated.delay(550),
+      Animated.timing(pulse, {
+        toValue: 0,
+        duration: 950,
+        easing: Easing.in(Easing.quad),
+        useNativeDriver: true,
+      }),
+    ]);
+    anim.start();
+    return () => anim.stop();
+  }, [color, pulse]);
+
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      <LinearGradient
-        colors={[withAlpha(color, 0.7), clear]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={[styles.glow, { top: 0, left: 0, right: 0, height: 46 }]}
-      />
-      <LinearGradient
-        colors={[clear, withAlpha(color, 0.7)]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={[styles.glow, { bottom: 0, left: 0, right: 0, height: 52 }]}
-      />
+    <Animated.View
+      style={[StyleSheet.absoluteFill, { opacity: pulse }]}
+      pointerEvents="none"
+    >
       <LinearGradient
         colors={[withAlpha(color, 0.6), clear]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
-        style={[styles.glow, { top: 0, bottom: 0, left: 0, width: 34 }]}
+        style={[styles.glow, { top: 0, bottom: 0, left: 0, width: 30 }]}
       />
       <LinearGradient
         colors={[clear, withAlpha(color, 0.6)]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
-        style={[styles.glow, { top: 0, bottom: 0, right: 0, width: 34 }]}
+        style={[styles.glow, { top: 0, bottom: 0, right: 0, width: 30 }]}
       />
-    </View>
+      <LinearGradient
+        colors={[withAlpha(color, 0.16), clear]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+        style={[styles.glow, { top: 0, left: 0, right: 0, height: 14 }]}
+      />
+      <LinearGradient
+        colors={[clear, withAlpha(color, 0.16)]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+        style={[styles.glow, { bottom: 0, left: 0, right: 0, height: 14 }]}
+      />
+    </Animated.View>
   );
 }
 
