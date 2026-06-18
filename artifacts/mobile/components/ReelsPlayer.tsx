@@ -88,28 +88,16 @@ function EdgeGlow({ color }: { color: string }) {
       pointerEvents="none"
     >
       <LinearGradient
-        colors={[withAlpha(color, 0.6), clear]}
+        colors={[withAlpha(color, 0.38), clear]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
-        style={[styles.glow, { top: 0, bottom: 0, left: 0, width: 30 }]}
+        style={[styles.glow, { top: 0, bottom: 0, left: 0, width: 18 }]}
       />
       <LinearGradient
-        colors={[clear, withAlpha(color, 0.6)]}
+        colors={[clear, withAlpha(color, 0.38)]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
-        style={[styles.glow, { top: 0, bottom: 0, right: 0, width: 30 }]}
-      />
-      <LinearGradient
-        colors={[withAlpha(color, 0.16), clear]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={[styles.glow, { top: 0, left: 0, right: 0, height: 14 }]}
-      />
-      <LinearGradient
-        colors={[clear, withAlpha(color, 0.16)]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={[styles.glow, { bottom: 0, left: 0, right: 0, height: 14 }]}
+        style={[styles.glow, { top: 0, bottom: 0, right: 0, width: 18 }]}
       />
     </Animated.View>
   );
