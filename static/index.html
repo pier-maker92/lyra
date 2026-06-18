@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lyra</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #000;
+      color: #fff;
+    }
+    .app {
+      position: fixed;
+      inset: 0;
+      background: #000;
+    }
+    .video-wrap {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      cursor: pointer;
+      background: #000;
+    }
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      background: #000;
+    }
+    .brand {
+      position: absolute;
+      top: 1.25rem;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      z-index: 4;
+      pointer-events: none;
+      color: #fff;
+      text-shadow: 0 1px 8px rgba(0,0,0,0.7);
+    }
+    .brand .logo {
+      width: 1.75rem;
+      height: 1.75rem;
+      flex-shrink: 0;
+      object-fit: contain;
+      filter: brightness(0) invert(1);
+    }
+    .brand-name {
+      font-size: 1.1rem;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    .overlay {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      padding: 1rem 0 6.5rem;
+      pointer-events: none;
+      display: none;
+      z-index: 2;
+      transition: background 0.35s ease;
+    }
+    .overlay.visible { display: block; pointer-events: auto; }
+    .carousel {
+      position: relative;
+      min-height: 38vh;
+      padding: 0 3.25rem 0.5rem;
+    }
+    .carousel-content {
+      min-height: 38vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      text-align: center;
+    }
+    .carousel .song {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #fff;
+      opacity: 0.9;
+      margin-bottom: 0.65rem;
+      text-shadow: 0 1px 8px rgba(0,0,0,0.5);
+      flex-shrink: 0;
+      transition: color 0.35s ease;
+    }
+    .carousel .lyrics {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", sans-serif;
+      font-size: 2rem;
+      font-weight: 700;
+      line-height: 1.3;
+      letter-spacing: -0.02em;
+      color: #fff;
+      text-shadow: 0 2px 12px rgba(0,0,0,0.55);
+      transition: color 0.35s ease;
+    }
+    .carousel-arrow {
+      position: absolute;
+      bottom: 8.5rem;
+      top: auto;
+      transform: none;
+      pointer-events: auto;
+      width: 3rem;
+      height: 3rem;
+      border: none;
+      background: transparent;
+      color: #fff;
+      font-size: 2.25rem;
+      line-height: 1;
+      cursor: pointer;
+      opacity: 0.9;
+      padding: 0;
+      text-shadow: 0 1px 6px rgba(0,0,0,0.8);
+      z-index: 1;
+    }
+    #prevMatch { left: 0.25rem; }
+    #nextMatch { right: 0.25rem; }
+    .lyric-word {
+      display: inline-block;
+      opacity: 0;
+      animation: lyricWordIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+    @keyframes lyricWordIn {
+      from {
+        opacity: 0;
+        transform: scale(0.88) translateY(0.15em);
+        filter: blur(3px);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+        filter: blur(0);
+      }
+    }
+    .carousel-arrow:hover { opacity: 1; }
+    .carousel-arrow:disabled {
+      opacity: 0.2;
+      cursor: default;
+    }
+    .controls {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      padding: 1rem 1rem 1.5rem;
+      background: linear-gradient(transparent, rgba(0,0,0,0.85));
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      z-index: 3;
+    }
+    .moods {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem;
+      justify-content: center;
+    }
+    .mood {
+      border: 2px solid rgba(255, 255, 255, 0.45);
+      border-radius: 999px;
+      padding: 0.7rem 1.5rem;
+      font-size: 1.05rem;
+      font-weight: 600;
+      cursor: pointer;
+      background: rgba(255, 255, 255, 0.12);
+      color: #fff;
+      backdrop-filter: blur(10px);
+      transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+    }
+    .mood:hover:not(:disabled) { transform: scale(1.04); }
+    .mood.active {
+      transform: scale(1.06);
+      box-shadow: 0 0 0 2px rgba(255,255,255,0.9);
+    }
+    .mood[data-mood="love"].active {
+      background: #EE4266;
+      color: #fff;
+      border-color: #EE4266;
+    }
+    .mood[data-mood="adventure"].active {
+      background: #0EAD69;
+      color: #fff;
+      border-color: #0EAD69;
+    }
+    .mood[data-mood="funny"].active {
+      background: #FFD23F;
+      color: #3d3200;
+      border-color: #FFD23F;
+    }
+    .mood[data-mood="chill"].active {
+      background: #3BCEAC;
+      color: #064a3d;
+      border-color: #3BCEAC;
+    }
+    .mood[data-mood="party"].active {
+      background: #540D6E;
+      color: #fff;
+      border-color: #540D6E;
+    }
+    .mood:disabled { opacity: 0.45; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div id="videoWrap" class="video-wrap">
+      <div class="brand">
+        <img class="logo" src="/static/logo.png" alt="Lyra">
+        <span class="brand-name">Lyra</span>
+      </div>
+      <video id="player" autoplay loop muted playsinline></video>
+      <div id="overlay" class="overlay">
+        <div class="carousel">
+          <button id="prevMatch" class="carousel-arrow" aria-label="Previous match">‹</button>
+          <div class="carousel-content">
+            <div id="songLine" class="song"></div>
+            <div id="lyricsLine" class="lyrics"></div>
+          </div>
+          <button id="nextMatch" class="carousel-arrow" aria-label="Next match">›</button>
+        </div>
+      </div>
+      <div class="controls">
+        <div id="moods" class="moods"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const videoWrap = document.getElementById("videoWrap");
+    const player = document.getElementById("player");
+    const overlay = document.getElementById("overlay");
+    const songLine = document.getElementById("songLine");
+    const lyricsLine = document.getElementById("lyricsLine");
+    const prevMatch = document.getElementById("prevMatch");
+    const nextMatch = document.getElementById("nextMatch");
+    const moodsEl = document.getElementById("moods");
+
+    const DEFAULT_MOOD = "adventure";
+
+    const MOOD_THEMES = {
+      love:      { rgb: "238, 66, 102",  text: "#ffffff" },
+      adventure: { rgb: "14, 173, 105",  text: "#ffffff" },
+      funny:     { rgb: "255, 210, 63",  text: "#3d3200" },
+      chill:     { rgb: "59, 206, 172",  text: "#064a3d" },
+      party:     { rgb: "84, 13, 110",   text: "#ffffff" },
+    };
+
+    let selectedMood = DEFAULT_MOOD;
+    let currentQuery = null;
+    let searchId = 0;
+    let matches = [];
+    let matchIndex = 0;
+
+    function applyMoodTheme(mood) {
+      const theme = MOOD_THEMES[mood] || MOOD_THEMES[DEFAULT_MOOD];
+      overlay.style.background =
+        `linear-gradient(transparent 0%, rgba(${theme.rgb}, 0.45) 28%, rgba(${theme.rgb}, 0.94) 100%)`;
+      songLine.style.color = "#ffffff";
+      lyricsLine.style.color = "#ffffff";
+    }
+
+    function renderLyrics(text) {
+      lyricsLine.innerHTML = "";
+      if (!text) {
+        lyricsLine.textContent = "(lyrics unavailable)";
+        return;
+      }
+
+      let wordIndex = 0;
+      const lines = text.split("\n");
+
+      lines.forEach((line, lineIdx) => {
+        if (lineIdx > 0) lyricsLine.appendChild(document.createElement("br"));
+
+        const words = line.trim().split(/\s+/).filter(Boolean);
+        words.forEach((word, wordIdx) => {
+          if (wordIdx > 0) lyricsLine.appendChild(document.createTextNode(" "));
+
+          const span = document.createElement("span");
+          span.className = "lyric-word";
+          span.textContent = word;
+          span.style.animationDelay = `${wordIndex * 0.1}s`;
+          wordIndex++;
+          lyricsLine.appendChild(span);
+        });
+      });
+    }
+
+    function renderMatch() {
+      const match = matches[matchIndex];
+      if (!match) return;
+
+      songLine.textContent = `${match.artist} — ${match.song}`;
+      renderLyrics(match.stanza);
+      prevMatch.disabled = matchIndex === 0;
+      nextMatch.disabled = matchIndex === matches.length - 1;
+    }
+
+    function showMatches(results) {
+      matches = results;
+      matchIndex = 0;
+      if (!matches.length) {
+        overlay.classList.remove("visible");
+        return;
+      }
+      renderMatch();
+      applyMoodTheme(selectedMood);
+      overlay.classList.add("visible");
+    }
+
+    function setMoodsDisabled(disabled) {
+      document.querySelectorAll(".mood").forEach(b => { b.disabled = disabled; });
+    }
+
+    async function loadMoods() {
+      const res = await fetch("/api/moods");
+      const data = await res.json();
+      for (const mood of data.moods) {
+        const btn = document.createElement("button");
+        btn.className = "mood";
+        btn.dataset.mood = mood;
+        btn.textContent = mood;
+        if (mood === DEFAULT_MOOD) btn.classList.add("active");
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          selectedMood = mood;
+          document.querySelectorAll(".mood").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          applyMoodTheme(mood);
+          findLyrics();
+        };
+        moodsEl.appendChild(btn);
+      }
+    }
+
+    function showVideo({ name, url }) {
+      currentQuery = name;
+      overlay.classList.remove("visible");
+      player.src = url;
+      player.load();
+      player.play().catch(() => {});
+    }
+
+    async function loadInitialVideo() {
+      const res = await fetch("/api/query/video");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Failed to load video");
+      showVideo(data);
+      await findLyrics();
+    }
+
+    async function nextVideo() {
+      const res = await fetch("/api/query/next", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Failed to load next video");
+      showVideo(data);
+      await findLyrics();
+    }
+
+    async function findLyrics() {
+      if (!currentQuery) return;
+
+      const id = ++searchId;
+      overlay.classList.remove("visible");
+      setMoodsDisabled(true);
+
+      const form = new FormData();
+      form.append("query_name", currentQuery);
+      if (selectedMood) form.append("mood", selectedMood);
+      form.append("top_k", "5");
+
+      try {
+        const res = await fetch("/api/retrieve", { method: "POST", body: form });
+        const data = await res.json();
+        if (id !== searchId) return;
+        if (!res.ok) throw new Error(data.detail || "Request failed");
+
+        showMatches(data.matches || []);
+      } catch (err) {
+        if (id !== searchId) return;
+      } finally {
+        if (id === searchId) setMoodsDisabled(false);
+      }
+    }
+
+    videoWrap.onclick = (e) => {
+      if (e.target.closest(".controls")) return;
+      if (e.target.closest(".overlay")) return;
+      nextVideo();
+    };
+
+    prevMatch.onclick = (e) => {
+      e.stopPropagation();
+      if (matchIndex > 0) {
+        matchIndex--;
+        renderMatch();
+      }
+    };
+
+    nextMatch.onclick = (e) => {
+      e.stopPropagation();
+      if (matchIndex < matches.length - 1) {
+        matchIndex++;
+        renderMatch();
+      }
+    };
+
+    async function init() {
+      await loadMoods();
+      applyMoodTheme(DEFAULT_MOOD);
+      await loadInitialVideo();
+    }
+
+    init();
+  </script>
+</body>
+</html>

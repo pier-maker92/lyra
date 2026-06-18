@@ -7,3 +7,6 @@ torchvision==0.23.0
 transformers==5.0.0
 sentence-transformers[video]
 sentence-transformers[image]
+fastapi
+uvicorn[standard]
+python-multipart

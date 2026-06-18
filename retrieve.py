@@ -10,7 +10,9 @@ from moods import MOODS, get_query_prompt
 from mxm import MusixmatchClient
 
 
-def load_video_frames(video_path, fps=None, max_frames=8, target_height=720):
+def load_video_frames(
+    video_path, fps=None, max_frames=8, target_height=720, max_duration=None
+):
     container = av.open(video_path)
     frames = []
 
@@ -22,6 +24,8 @@ def load_video_frames(video_path, fps=None, max_frames=8, target_height=720):
             t = frame.time
             if t is None:
                 continue
+            if max_duration is not None and t > max_duration:
+                break
             if t >= next_target_time:
                 img = frame.to_image()
                 w, h = img.size
@@ -30,6 +34,8 @@ def load_video_frames(video_path, fps=None, max_frames=8, target_height=720):
                     img = img.resize((new_w, target_height), Image.Resampling.LANCZOS)
                 frames.append(img)
                 next_target_time += interval
+                if max_duration is not None and next_target_time > max_duration:
+                    break
     else:
         # Attempt to sample uniformly across the video
         try:
@@ -48,6 +54,9 @@ def load_video_frames(video_path, fps=None, max_frames=8, target_height=720):
 
         container.seek(0)
         for i, frame in enumerate(container.decode(video=0)):
+            t = frame.time
+            if max_duration is not None and t is not None and t > max_duration:
+                break
             if indices is not None:
                 if i in indices:
                     img = frame.to_image()
@@ -81,6 +90,118 @@ def get_track_id(chunk_id: str, metadata: dict) -> str:
     return chunk_id
 
 
+def get_device() -> str:
+    if torch.cuda.is_available():
+        return "cuda"
+    if torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
+
+
+def retrieve_from_path(
+    query_path: str,
+    model: SentenceTransformer,
+    collection,
+    mood: str | None = None,
+    genre: str | None = None,
+    artist: str | None = None,
+    fps: float | None = 4,
+    max_duration: float | None = 5.0,
+    top_k: int = 5,
+    mxm_client: MusixmatchClient | None = None,
+) -> list[dict]:
+    is_video = query_path.lower().endswith(
+        (".mp4", ".avi", ".mov", ".mkv", ".webm")
+    )
+
+    if is_video:
+        media_data = load_video_frames(
+            query_path, fps=fps, max_duration=max_duration
+        )
+        media_key = "video"
+    else:
+        media_data = Image.open(query_path)
+        w, h = media_data.size
+        if h > 720:
+            new_w = int((720 / h) * w)
+            media_data = media_data.resize((new_w, 720), Image.Resampling.LANCZOS)
+        media_key = "image"
+
+    system_prompt = get_query_prompt(mood)
+    user_text = "Match these visuals to song lyrics:"
+
+    query_embedding = model.encode(
+        [{media_key: media_data, "text": user_text}],
+        prompt=system_prompt,
+    )[0].tolist()
+
+    where_conditions = []
+    if genre:
+        where_conditions.append({"genre": genre})
+    if artist:
+        where_conditions.append({"artist_name": artist})
+
+    where_clause = None
+    if len(where_conditions) > 1:
+        where_clause = {"$and": where_conditions}
+    elif len(where_conditions) == 1:
+        where_clause = where_conditions[0]
+
+    search_k = top_k * 5
+    results = collection.query(
+        query_embeddings=[query_embedding],
+        n_results=search_k,
+        where=where_clause,
+        include=["metadatas", "distances"],
+    )
+
+    if not results["ids"] or not results["ids"][0]:
+        return []
+
+    unique_results = []
+    seen_tracks = set()
+
+    for i in range(len(results["ids"][0])):
+        chunk_id = results["ids"][0][i]
+        metadata = results["metadatas"][0][i]
+        track_id = get_track_id(chunk_id, metadata)
+
+        if track_id not in seen_tracks:
+            seen_tracks.add(track_id)
+            unique_results.append(
+                {
+                    "id": chunk_id,
+                    "distance": results["distances"][0][i],
+                    "metadata": metadata,
+                }
+            )
+
+            if len(unique_results) == top_k:
+                break
+
+    matches = []
+    for res in unique_results:
+        track_id = get_track_id(res["id"], res["metadata"])
+        details = (
+            mxm_client.fetch_match_details(track_id, res["id"])
+            if mxm_client
+            else {}
+        )
+        matches.append(
+            {
+                "id": res["id"],
+                "distance": res["distance"],
+                "track_id": track_id,
+                "artist": details.get("artist_name") or "Unknown",
+                "song": details.get("track_name") or "Unknown",
+                "genre": res["metadata"].get("genre", "Unknown"),
+                "stanza": details.get("stanza"),
+            }
+        )
+
+    return matches
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Retrieve song lyrics based on a video or image query."
@@ -102,99 +223,30 @@ def main():
     parser.add_argument(
         "--fps",
         type=float,
-        default=None,
-        help="Frames per second to sample from the video",
+        default=4,
+        help="Frames per second to sample from the video (default: 4)",
+    )
+    parser.add_argument(
+        "--max-duration",
+        type=float,
+        default=5.0,
+        help="Only process the first N seconds of video (default: 5)",
     )
     parser.add_argument(
         "--top_k", type=int, default=5, help="Number of results to retrieve"
     )
     args = parser.parse_args()
 
-    device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+    device = get_device()
     print(f"Loading SentenceTransformer model on {device}...")
     model = SentenceTransformer("Qwen/Qwen3-VL-Embedding-2B", trust_remote_code=True, device=device)
-
-    print("Embedding query...")
-    is_video = args.query_path.lower().endswith(
-        (".mp4", ".avi", ".mov", ".mkv", ".webm")
-    )
-
-    if is_video:
-        print(f"Extracting and downsampling frames from video: {args.query_path}")
-        media_data = load_video_frames(args.query_path, fps=args.fps)
-        media_key = "video"
-    else:
-        media_data = Image.open(args.query_path)
-        w, h = media_data.size
-        if h > 720:
-            new_w = int((720 / h) * w)
-            media_data = media_data.resize((new_w, 720), Image.Resampling.LANCZOS)
-        media_key = "image"
-
-    system_prompt = get_query_prompt(args.mood)
-    user_text = "Match these visuals to song lyrics:"
 
     if args.mood:
         print(f"Using mood: {args.mood}")
 
-    query_embedding = model.encode(
-        [{media_key: media_data, "text": user_text}],
-        prompt=system_prompt,
-    )[0].tolist()
-
     print("Connecting to ChromaDB...")
     client = chromadb.PersistentClient(path="./lyrics_catalog_db")
     collection = client.get_collection(name="song_lyrics_min")
-
-    # Build the where clause for metadata filtering
-    where_conditions = []
-    if args.genre:
-        where_conditions.append({"genre": args.genre})
-    if args.artist:
-        where_conditions.append({"artist_name": args.artist})
-
-    where_clause = None
-    if len(where_conditions) > 1:
-        where_clause = {"$and": where_conditions}
-    elif len(where_conditions) == 1:
-        where_clause = where_conditions[0]
-
-    print("Searching for matches...")
-    # Execute the search with a larger top_k to allow for deduplication
-    search_k = args.top_k * 5
-    results = collection.query(
-        query_embeddings=[query_embedding],
-        n_results=search_k,
-        where=where_clause,
-        include=["metadatas", "distances"],
-    )
-
-    print("\n--- Search Results ---")
-    if not results["ids"] or not results["ids"][0]:
-        print("No results found.")
-        return
-
-    unique_results = []
-    seen_tracks = set()
-
-    for i in range(len(results["ids"][0])):
-        chunk_id = results["ids"][0][i]
-        metadata = results["metadatas"][0][i]
-        track_id = get_track_id(chunk_id, metadata)
-
-        if track_id not in seen_tracks:
-            seen_tracks.add(track_id)
-            unique_results.append(
-                {
-                    "id": chunk_id,
-                    "distance": results["distances"][0][i],
-                    "metadata": metadata,
-                }
-            )
-
-            # Stop once we have top_k unique tracks
-            if len(unique_results) == args.top_k:
-                break
 
     try:
         mxm_client = MusixmatchClient()
@@ -202,23 +254,35 @@ def main():
         print(f"Warning: {e}")
         mxm_client = None
 
-    for i, res in enumerate(unique_results):
-        track_id = get_track_id(res["id"], res["metadata"])
-        details = (
-            mxm_client.fetch_match_details(track_id, res["id"])
-            if mxm_client
-            else {}
-        )
+    print("Embedding query and searching for matches...")
+    matches = retrieve_from_path(
+        args.query_path,
+        model,
+        collection,
+        mood=args.mood,
+        genre=args.genre,
+        artist=args.artist,
+        fps=args.fps,
+        max_duration=args.max_duration,
+        top_k=args.top_k,
+        mxm_client=mxm_client,
+    )
 
+    print("\n--- Search Results ---")
+    if not matches:
+        print("No results found.")
+        return
+
+    for i, match in enumerate(matches):
         print(f"\nMatch {i+1}:")
-        print(f"  ID:       {res['id']}")
-        print(f"  Distance: {res['distance']:.4f}")
-        print(f"  Artist:   {details.get('artist_name') or 'Unknown'}")
-        print(f"  Song:     {details.get('track_name') or 'Unknown'}")
-        print(f"  Genre:    {res['metadata'].get('genre', 'Unknown')}")
-        print(f"  Track ID: {track_id}")
+        print(f"  ID:       {match['id']}")
+        print(f"  Distance: {match['distance']:.4f}")
+        print(f"  Artist:   {match['artist']}")
+        print(f"  Song:     {match['song']}")
+        print(f"  Genre:    {match['genre']}")
+        print(f"  Track ID: {match['track_id']}")
 
-        stanza = details.get("stanza")
+        stanza = match.get("stanza")
         if stanza:
             lyrics_snippet = stanza.replace("\n", " / ")
             print(f"  Lyrics:   {lyrics_snippet}")
