@@ -58,7 +58,6 @@ def main():
     all_prompts = []
     all_ids = []
     all_metadatas = []
-    all_documents = []
 
     # First pass: collect everything into memory
     for i, track_data in enumerate(
@@ -96,7 +95,6 @@ def main():
 
                 all_prompts.append(lyric_prompt)
                 all_ids.append(chunk_id)
-                all_documents.append(stanza)
                 all_metadatas.append(
                     {
                         "artist_name": artist_name,
@@ -119,19 +117,16 @@ def main():
     for i in tqdm(range(0, total_chunks, args.batch_size), desc="Embedding batches"):
         batch_prompts = all_prompts[i : i + args.batch_size]
         batch_ids = all_ids[i : i + args.batch_size]
-        batch_documents = all_documents[i : i + args.batch_size]
         batch_metadatas = all_metadatas[i : i + args.batch_size]
 
         embeddings = model.encode(
             batch_prompts, batch_size=args.batch_size, show_progress_bar=False
         ).tolist()
 
-        # Insert batch into ChromaDB
         collection.add(
             ids=batch_ids,
             embeddings=embeddings,
             metadatas=batch_metadatas,
-            documents=batch_documents,
         )
 
     print(f"\nSuccessfully processed and added tracks to the database.")

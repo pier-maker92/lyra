@@ -7,6 +7,7 @@ from PIL import Image
 import numpy as np
 
 from moods import MOODS, get_query_prompt
+from mxm import MusixmatchClient
 
 
 def load_video_frames(video_path, fps=None, max_frames=8, target_height=720):
@@ -165,7 +166,7 @@ def main():
         query_embeddings=[query_embedding],
         n_results=search_k,
         where=where_clause,
-        include=["metadatas", "documents", "distances"],
+        include=["metadatas", "distances"],
     )
 
     print("\n--- Search Results ---")
@@ -188,7 +189,6 @@ def main():
                     "id": chunk_id,
                     "distance": results["distances"][0][i],
                     "metadata": metadata,
-                    "document": results["documents"][0][i],
                 }
             )
 
@@ -196,17 +196,34 @@ def main():
             if len(unique_results) == args.top_k:
                 break
 
+    try:
+        mxm_client = MusixmatchClient()
+    except ValueError as e:
+        print(f"Warning: {e}")
+        mxm_client = None
+
     for i, res in enumerate(unique_results):
+        track_id = get_track_id(res["id"], res["metadata"])
+        details = (
+            mxm_client.fetch_match_details(track_id, res["id"])
+            if mxm_client
+            else {}
+        )
+
         print(f"\nMatch {i+1}:")
         print(f"  ID:       {res['id']}")
         print(f"  Distance: {res['distance']:.4f}")
-        metadata = res["metadata"]
-        print(f"  Artist:   {metadata.get('artist_name', 'Unknown')}")
-        print(f"  Genre:    {metadata.get('genre', 'Unknown')}")
+        print(f"  Artist:   {details.get('artist_name') or 'Unknown'}")
+        print(f"  Song:     {details.get('track_name') or 'Unknown'}")
+        print(f"  Genre:    {res['metadata'].get('genre', 'Unknown')}")
+        print(f"  Track ID: {track_id}")
 
-        # Print a snippet of the lyrics (or the full stanza)
-        lyrics_snippet = res["document"].replace("\n", " / ")
-        print(f"  Lyrics:   {lyrics_snippet}")
+        stanza = details.get("stanza")
+        if stanza:
+            lyrics_snippet = stanza.replace("\n", " / ")
+            print(f"  Lyrics:   {lyrics_snippet}")
+        else:
+            print("  Lyrics:   (unavailable)")
 
 
 if __name__ == "__main__":
