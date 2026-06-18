@@ -1,1 +1,2 @@
 - [Visual Lyrics architecture](visual-lyrics.md) — Expo reels app + Express proxy + standalone Python lyrics-engine; production deploy caveat for the Python service.
+- [Replit preview access](replit-preview-access.md) — gray preview / ERR_NAME_NOT_RESOLVED is usually user VPN/DNS, not code; serve Expo web at $REPLIT_DEV_DOMAIN root, never the .expo.* subdomain or .repl.co.
