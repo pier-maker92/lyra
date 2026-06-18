@@ -7,8 +7,13 @@ export type MediaType = "image" | "video";
 export interface PickedMedia {
   uri: string;
   type: MediaType;
+  /** Preview frame (first sampled frame). */
   dataUrl: string;
+  /** All sampled frames as JPEG data URLs (one for images, ~1fps for videos). */
+  frames: string[];
 }
+
+const MAX_VIDEO_FRAMES = 8;
 
 export class CameraPermissionError extends Error {
   constructor() {
@@ -36,23 +41,38 @@ async function buildDataUrl(uri: string): Promise<string> {
   return `data:image/jpeg;base64,${result.base64 ?? ""}`;
 }
 
+async function buildVideoFrames(
+  uri: string,
+  durationMs: number | undefined,
+): Promise<string[]> {
+  const total = durationMs && durationMs > 0 ? durationMs : 1000;
+  // ~1fps, capped so long clips don't explode the embedding cost. When the clip
+  // is longer than the cap, sample evenly across its whole duration.
+  const count = Math.min(MAX_VIDEO_FRAMES, Math.max(1, Math.floor(total / 1000)));
+  const frames: string[] = [];
+  for (let i = 0; i < count; i++) {
+    // Evenly spaced including first (t=0) and last (t≈duration) frame.
+    const time = count === 1 ? 0 : Math.round((i * (total - 1)) / (count - 1));
+    try {
+      const thumb = await VideoThumbnails.getThumbnailAsync(uri, { time });
+      frames.push(await buildDataUrl(thumb.uri));
+    } catch {
+      // Skip a frame that fails to extract; keep the rest.
+    }
+  }
+  if (frames.length === 0) throw new VideoThumbnailError();
+  return frames;
+}
+
 async function processAsset(
   asset: ImagePicker.ImagePickerAsset,
 ): Promise<PickedMedia> {
   const type: MediaType = asset.type === "video" ? "video" : "image";
-  let frameUri = asset.uri;
-  if (type === "video") {
-    try {
-      const thumb = await VideoThumbnails.getThumbnailAsync(asset.uri, {
-        time: 1000,
-      });
-      frameUri = thumb.uri;
-    } catch {
-      throw new VideoThumbnailError();
-    }
-  }
-  const dataUrl = await buildDataUrl(frameUri);
-  return { uri: asset.uri, type, dataUrl };
+  const frames =
+    type === "video"
+      ? await buildVideoFrames(asset.uri, asset.duration ?? undefined)
+      : [await buildDataUrl(asset.uri)];
+  return { uri: asset.uri, type, dataUrl: frames[0], frames };
 }
 
 export async function pickFromLibrary(): Promise<PickedMedia | null> {

@@ -5,9 +5,12 @@ const router: IRouter = Router();
 const ENGINE_URL = process.env.LYRICS_ENGINE_URL ?? "http://127.0.0.1:8000";
 
 router.post("/analyze", async (req, res) => {
-  const imageDataUrl = req.body?.imageDataUrl;
-  if (typeof imageDataUrl !== "string" || !imageDataUrl.startsWith("data:")) {
-    res.status(400).json({ error: "imageDataUrl must be a data URL" });
+  const rawFrames = Array.isArray(req.body?.frames) ? req.body.frames : [];
+  const frames = rawFrames.filter(
+    (f: unknown): f is string => typeof f === "string" && f.startsWith("data:"),
+  );
+  if (frames.length === 0) {
+    res.status(400).json({ error: "frames must contain at least one data URL" });
     return;
   }
 
@@ -15,7 +18,7 @@ router.post("/analyze", async (req, res) => {
     const upstream = await fetch(`${ENGINE_URL}/analyze`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ imageDataUrl }),
+      body: JSON.stringify({ frames }),
     });
 
     const text = await upstream.text();

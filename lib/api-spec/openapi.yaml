@@ -57,11 +57,17 @@ components:
     AnalyzeRequest:
       type: object
       properties:
-        imageDataUrl:
-          type: string
-          description: Base64 data URL of the image to analyze
+        frames:
+          type: array
+          minItems: 1
+          description: >-
+            Ordered list of base64 JPEG data URLs. For an image this is a single
+            frame; for a video, frames sampled at ~1fps. Their embeddings are
+            averaged into one query per mood.
+          items:
+            type: string
       required:
-        - imageDataUrl
+        - frames
     LyricMatch:
       type: object
       properties:

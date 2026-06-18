@@ -14,13 +14,15 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from embeddings import embed_visual_query
+from embeddings import embed_visual_frames
 from moods import MOODS, get_query_prompt
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lyrics_catalog_db")
 COLLECTION_NAME = "song_lyrics_min"
 TOP_K = 15
 RESULTS_PER_MOOD = 5
+MAX_FRAMES = 8
+EMBED_CONCURRENCY = 6
 
 app = FastAPI(title="Lyrics Engine")
 app.add_middleware(
@@ -44,7 +46,7 @@ def _collection():
 
 
 class AnalyzeRequest(BaseModel):
-    imageDataUrl: str
+    frames: list[str]
 
 
 class LyricMatch(BaseModel):
@@ -84,17 +86,29 @@ def _dedupe(query_result) -> list[LyricMatch]:
 
 @app.post("/analyze")
 async def analyze(req: AnalyzeRequest) -> dict[str, list[LyricMatch]]:
-    image = req.imageDataUrl
-    if not image or not image.startswith("data:"):
-        raise HTTPException(status_code=400, detail="imageDataUrl must be a data URL")
+    frames = [f for f in req.frames if isinstance(f, str) and f.startswith("data:")]
+    if not frames:
+        raise HTTPException(
+            status_code=400, detail="frames must contain at least one data URL"
+        )
+    if len(frames) > MAX_FRAMES:
+        # Sample evenly across the clip (including first and last frame) so we
+        # keep ~1fps coverage without exploding the number of embedding calls.
+        last = len(frames) - 1
+        frames = [
+            frames[round(i * last / (MAX_FRAMES - 1))] for i in range(MAX_FRAMES)
+        ]
 
     collection = _collection()
+    semaphore = asyncio.Semaphore(EMBED_CONCURRENCY)
 
-    async with httpx.AsyncClient(timeout=90.0) as client:
+    async with httpx.AsyncClient(timeout=120.0) as client:
         try:
             vectors = await asyncio.gather(
                 *[
-                    embed_visual_query(client, get_query_prompt(mood), image)
+                    embed_visual_frames(
+                        client, get_query_prompt(mood), frames, semaphore
+                    )
                     for mood in MOODS
                 ]
             )

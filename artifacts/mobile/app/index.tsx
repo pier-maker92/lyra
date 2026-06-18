@@ -29,7 +29,7 @@ export default function Index() {
       setMedia(picked);
       setResults(null);
       analyze.mutate(
-        { data: { imageDataUrl: picked.dataUrl } },
+        { data: { frames: picked.frames } },
         {
           onSuccess: (data) => setResults(data),
           onError: () => {

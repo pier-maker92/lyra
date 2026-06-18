@@ -21,8 +21,11 @@ export const HealthCheckResponse = zod.object({
  * Embeds the image per mood and returns top unique lyric matches for each mood.
  * @summary Match lyrics to a visual
  */
+
+
+
 export const AnalyzeVisualBody = zod.object({
-  "imageDataUrl": zod.string().describe('Base64 data URL of the image to analyze')
+  "frames": zod.array(zod.string()).min(1).describe('Ordered list of base64 JPEG data URLs. For an image this is a single frame; for a video, frames sampled at ~1fps. Their embeddings are averaged into one query per mood.')
 })
 
 export const AnalyzeVisualResponse = zod.object({
