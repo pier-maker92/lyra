@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from embeddings import embed_visual_frames
 from moods import MOODS, get_query_prompt
+from musixmatch import MusixmatchError, fetch_track
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lyrics_catalog_db")
 COLLECTION_NAME = "song_lyrics_min"
@@ -38,10 +39,13 @@ _client = chromadb.PersistentClient(path=DB_PATH)
 def _collection():
     try:
         return _client.get_collection(COLLECTION_NAME)
-    except Exception as exc:  # collection not seeded yet
+    except Exception as exc:  # collection missing
         raise HTTPException(
             status_code=503,
-            detail="Lyrics catalog is not seeded. Run seed.py first.",
+            detail=(
+                f"Lyrics catalog collection '{COLLECTION_NAME}' not found at "
+                f"{DB_PATH}. Install the real ChromaDB."
+            ),
         ) from exc
 
 
@@ -61,27 +65,65 @@ def healthz():
     return {"status": "ok"}
 
 
-def _dedupe(query_result) -> list[LyricMatch]:
-    metadatas = (query_result.get("metadatas") or [[]])[0]
+def _parse_embedding_id(embedding_id: str) -> tuple[str, int]:
+    """Split a catalog embedding id ``{track_id}_stanza_{j}`` into its parts.
+
+    The user's real ChromaDB encodes the Musixmatch track_id plus the stanza index
+    in the id; the metadata only carries ``genre``/``language``. track_id itself is
+    numeric, so we split on the last ``_stanza_`` separator.
+    """
+    marker = "_stanza_"
+    idx = embedding_id.rfind(marker)
+    if idx == -1:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected embedding id format: {embedding_id!r}",
+        )
+    track_id = embedding_id[:idx]
+    stanza_part = embedding_id[idx + len(marker) :]
+    try:
+        stanza_index = int(stanza_part)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected stanza index in id: {embedding_id!r}",
+        ) from exc
+    return track_id, stanza_index
+
+
+def _dedupe_ids(query_result) -> list[tuple[str, int, float]]:
+    """Pick up to RESULTS_PER_MOOD unique tracks from a Chroma query result.
+
+    Returns ``(track_id, stanza_index, distance)`` tuples in ranked order.
+    """
+    ids = (query_result.get("ids") or [[]])[0]
     distances = (query_result.get("distances") or [[]])[0]
     seen: set[str] = set()
-    matches: list[LyricMatch] = []
-    for meta, dist in zip(metadatas, distances):
-        track_id = str(meta.get("track_id", ""))
+    picks: list[tuple[str, int, float]] = []
+    for embedding_id, dist in zip(ids, distances):
+        track_id, stanza_index = _parse_embedding_id(str(embedding_id))
         if track_id in seen:
             continue
         seen.add(track_id)
-        matches.append(
-            LyricMatch(
-                lyric=str(meta.get("stanza", "")),
-                artist=str(meta.get("artist_name", "")),
-                track=str(meta.get("track_name", "")),
-                distance=float(dist),
-            )
-        )
-        if len(matches) >= RESULTS_PER_MOOD:
+        picks.append((track_id, stanza_index, float(dist)))
+        if len(picks) >= RESULTS_PER_MOOD:
             break
-    return matches
+    return picks
+
+
+def _stanza_at(lyrics: str, index: int) -> str:
+    """Return the stanza at ``index`` (stanzas are separated by blank lines)."""
+    stanzas = [s.strip() for s in lyrics.split("\n\n") if s.strip()]
+    if not stanzas:
+        raise HTTPException(
+            status_code=502, detail="Musixmatch returned lyrics with no stanzas"
+        )
+    if index < 0 or index >= len(stanzas):
+        # The stanza index came from the user's embedding pipeline; if Musixmatch
+        # lyrics have fewer stanzas, clamp to the last one rather than dropping the
+        # match. (The Musixmatch call itself still fails loudly elsewhere.)
+        index = len(stanzas) - 1
+    return stanzas[index]
 
 
 @app.post("/analyze")
@@ -118,12 +160,45 @@ async def analyze(req: AnalyzeRequest) -> dict[str, list[LyricMatch]]:
                 detail=f"Embedding provider error: {exc.response.status_code}",
             ) from exc
 
-    response: dict[str, list[LyricMatch]] = {}
-    for mood, vector in zip(MOODS, vectors):
-        result = collection.query(
-            query_embeddings=[vector],
-            n_results=TOP_K,
-            include=["metadatas", "distances"],
+        # Rank + dedupe each mood, then resolve every unique track once via Musixmatch.
+        per_mood_picks: dict[str, list[tuple[str, int, float]]] = {}
+        for mood, vector in zip(MOODS, vectors):
+            result = collection.query(
+                query_embeddings=[vector],
+                n_results=TOP_K,
+                include=["distances"],
+            )
+            per_mood_picks[mood] = _dedupe_ids(result)
+
+        needed = list(
+            {track_id for picks in per_mood_picks.values() for track_id, _, _ in picks}
         )
-        response[mood] = _dedupe(result)
+        try:
+            fetched = await asyncio.gather(
+                *[fetch_track(client, track_id) for track_id in needed]
+            )
+        except httpx.HTTPStatusError as exc:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Musixmatch request failed: {exc.response.status_code}",
+            ) from exc
+        except MusixmatchError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    tracks = dict(zip(needed, fetched))
+
+    response: dict[str, list[LyricMatch]] = {}
+    for mood, picks in per_mood_picks.items():
+        matches: list[LyricMatch] = []
+        for track_id, stanza_index, distance in picks:
+            data = tracks[track_id]
+            matches.append(
+                LyricMatch(
+                    lyric=_stanza_at(data.lyrics, stanza_index),
+                    artist=data.artist,
+                    track=data.track,
+                    distance=distance,
+                )
+            )
+        response[mood] = matches
     return response

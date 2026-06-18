@@ -27,6 +27,18 @@ itself (Expo Launch / App Store) is independent, but it points at the production
 domain, so the backend must be fixed first or analysis breaks in prod.
 
 ## Embedding/retrieval note
-Mood conditioning works: for a concert photo the `party` mood returns the lowest
-distances. The seeded catalog is 30 ORIGINAL placeholder stanzas (6 per mood) in
-`services/lyrics-engine/catalog.json` — meant to be swapped for the user's real dataset.
+Mood conditioning works at the prompt level. The catalog is the user's REAL ChromaDB
+(collection `song_lyrics_min`, ~80k stanzas, cosine, 2048-dim) installed at
+`services/lyrics-engine/lyrics_catalog_db/` (~700MB, not gitignored).
+
+## Real catalog + Musixmatch (important)
+Real Chroma ids are `{track_id}_stanza_{j}` (numeric Musixmatch track_id + stanza
+index); metadata only has `genre`/`language` — NO lyric/artist/title. So `analyze`
+dedupes query hits by `track_id`, then resolves artist/title/lyrics from Musixmatch
+(`track.get` + `track.lyrics.get`, keyed by `track_id`) and picks stanza `j` by
+splitting lyrics on blank lines (`\n\n`). `musixmatch.py` caches per `track_id`
+(process-wide) — one `analyze` can need ~25 tracks, so the cache matters for plan limits.
+Musixmatch failures propagate as explicit 502s (no silent fallback). Needs
+`MUSIXMATCH_API_KEY` secret.
+**Danger:** `seed.py` wipes+rebuilds `song_lyrics_min` — gated behind `ALLOW_SEED_RESET=1`
++ a catalog arg so it can never nuke the real DB. The placeholder `catalog.json` is gone.

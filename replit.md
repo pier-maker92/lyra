@@ -52,7 +52,11 @@ left/right to change mood and up/down to move between matches.
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- The lyrics engine uses the user's **real ChromaDB** at `services/lyrics-engine/lyrics_catalog_db/`
+  (collection `song_lyrics_min`, cosine, 2048-dim). Never run `seed.py` against it — it wipes
+  and rebuilds the collection. It is gated behind `ALLOW_SEED_RESET=1` + a catalog arg for safety.
+- Chroma ids are `{track_id}_stanza_{j}`; lyric/artist/title come from **Musixmatch**, not Chroma
+  metadata. Requires the `MUSIXMATCH_API_KEY` secret. A Musixmatch failure returns an explicit 502.
 
 ## Pointers
 
