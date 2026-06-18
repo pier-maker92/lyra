@@ -66,14 +66,14 @@ function EdgeGlow({ color }: { color: string }) {
     const anim = Animated.sequence([
       Animated.timing(pulse, {
         toValue: 1,
-        duration: 260,
+        duration: 170,
         easing: Easing.out(Easing.quad),
         useNativeDriver: true,
       }),
-      Animated.delay(550),
+      Animated.delay(250),
       Animated.timing(pulse, {
         toValue: 0,
-        duration: 950,
+        duration: 480,
         easing: Easing.in(Easing.quad),
         useNativeDriver: true,
       }),
@@ -98,6 +98,18 @@ function EdgeGlow({ color }: { color: string }) {
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
         style={[styles.glow, { top: 0, bottom: 0, right: 0, width: 14 }]}
+      />
+      <LinearGradient
+        colors={[withAlpha(color, 0.38), clear]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+        style={[styles.glow, { top: 0, left: 0, right: 0, height: 14 }]}
+      />
+      <LinearGradient
+        colors={[clear, withAlpha(color, 0.38)]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+        style={[styles.glow, { bottom: 0, left: 0, right: 0, height: 14 }]}
       />
     </Animated.View>
   );
