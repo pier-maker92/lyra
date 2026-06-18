@@ -42,3 +42,12 @@ Musixmatch failures propagate as explicit 502s (no silent fallback). Needs
 `MUSIXMATCH_API_KEY` secret.
 **Danger:** `seed.py` wipes+rebuilds `song_lyrics_min` — gated behind `ALLOW_SEED_RESET=1`
 + a catalog arg so it can never nuke the real DB. The placeholder `catalog.json` is gone.
+
+## Restart engine after merges
+
+The `Lyrics Engine` is a **standalone Python workflow**, not an artifact, so the
+post-merge setup script does **not** restart it. After any merge that touches
+`services/lyrics-engine`, manually restart the `Lyrics Engine` workflow — otherwise
+it keeps serving the pre-merge code. Symptom of the stale process: `/api/analyze`
+returns 200 but with empty lyric/artist/track fields (old code read Chroma
+metadata that does not exist in the real DB) and Musixmatch is never called.
