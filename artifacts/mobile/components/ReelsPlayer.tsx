@@ -62,28 +62,28 @@ function EdgeGlow({ color }: { color: string }) {
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       <LinearGradient
+        colors={[withAlpha(color, 0.7), clear]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+        style={[styles.glow, { top: 0, left: 0, right: 0, height: 46 }]}
+      />
+      <LinearGradient
+        colors={[clear, withAlpha(color, 0.7)]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+        style={[styles.glow, { bottom: 0, left: 0, right: 0, height: 52 }]}
+      />
+      <LinearGradient
         colors={[withAlpha(color, 0.6), clear]}
         start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={[styles.glow, { top: 0, left: 0, right: 0, height: 170 }]}
+        end={{ x: 1, y: 0 }}
+        style={[styles.glow, { top: 0, bottom: 0, left: 0, width: 34 }]}
       />
       <LinearGradient
-        colors={[clear, withAlpha(color, 0.55)]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={[styles.glow, { bottom: 0, left: 0, right: 0, height: 210 }]}
-      />
-      <LinearGradient
-        colors={[withAlpha(color, 0.5), clear]}
+        colors={[clear, withAlpha(color, 0.6)]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
-        style={[styles.glow, { top: 0, bottom: 0, left: 0, width: 110 }]}
-      />
-      <LinearGradient
-        colors={[clear, withAlpha(color, 0.5)]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={[styles.glow, { top: 0, bottom: 0, right: 0, width: 110 }]}
+        style={[styles.glow, { top: 0, bottom: 0, right: 0, width: 34 }]}
       />
     </View>
   );
