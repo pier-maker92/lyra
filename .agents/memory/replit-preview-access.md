@@ -28,3 +28,16 @@ opening the app URL, it is almost always **environment-side, not a code bug.**
   is internal and not publicly resolvable (gives ERR_NAME_NOT_RESOLVED).
 - `.repl.co` is the legacy preview-wrapper domain; it can be down/unresolvable.
   Always point users at `.replit.dev`, never `.repl.co`.
+
+## Editor/canvas preview for Expo (in-workspace device frame)
+- The in-editor preview embeds a wrapper at `<id>.<cluster>.repl.co/__replco/workspace_iframe.html`.
+- With `router = "expo-domain"` in the mobile artifact.toml, the wrapper uses the
+  `*.expo.<cluster>.repl.co` subdomain, which can be DOWN (curl from container -> 000)
+  even when the plain `*.<cluster>.repl.co` wrapper is alive (200) and the main
+  `*.<cluster>.replit.dev` serves fine.
+- Fix that worked: remove the `router = "expo-domain"` line via
+  verifyAndReplaceArtifactToml (cannot change `kind` — that's rejected), then restart
+  the expo workflow + presentArtifact. The editor preview then routes through the
+  working non-expo `.repl.co` wrapper / main domain.
+- Removing expo-domain routing trades away the native Expo Go tunnel for a working
+  in-editor web preview. Re-add it if native device testing is needed.
