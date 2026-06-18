@@ -1,8 +1,35 @@
 import { useVideoPlayer, VideoView } from "expo-video";
 import React from "react";
-import { StyleSheet } from "react-native";
+import { Platform, StyleSheet } from "react-native";
 
-export function VideoBackground({ uri }: { uri: string }) {
+function WebVideo({ uri }: { uri: string }) {
+  return React.createElement("video", {
+    ref: (el: HTMLVideoElement | null) => {
+      if (!el) return;
+      // Setting the property (not just the attribute) before play() is what
+      // satisfies the browser muted-autoplay policy for blob: sources.
+      el.muted = true;
+      el.defaultMuted = true;
+      const p = el.play();
+      if (p && typeof p.catch === "function") p.catch(() => {});
+    },
+    src: uri,
+    autoPlay: true,
+    loop: true,
+    muted: true,
+    playsInline: true,
+    style: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      width: "100%",
+      height: "100%",
+      objectFit: "cover",
+    },
+  });
+}
+
+function NativeVideo({ uri }: { uri: string }) {
   "use no memo";
   const player = useVideoPlayer(uri, (p) => {
     p.loop = true;
@@ -17,4 +44,11 @@ export function VideoBackground({ uri }: { uri: string }) {
       nativeControls={false}
     />
   );
+}
+
+export function VideoBackground({ uri }: { uri: string }) {
+  if (Platform.OS === "web") {
+    return <WebVideo uri={uri} />;
+  }
+  return <NativeVideo uri={uri} />;
 }

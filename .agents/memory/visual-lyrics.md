@@ -59,3 +59,14 @@ mis-compiles components that call expo-video `useVideoPlayer`, throwing a runtim
 "Invalid hook call" that the ErrorBoundary swallows — so the video silently never
 mounts/plays. Fix: add the `"use no memo";` directive as the first statement inside
 any component that calls `useVideoPlayer` (see components/VideoBackground.tsx).
+
+## expo-video does not autoplay on web — use a native <video> there
+
+On web, expo-video `useVideoPlayer` + `player.play()` does NOT reliably start a
+muted-autoplay blob: source (browser autoplay policy). The VideoView mounts but
+stays paused/black. Fix: in components/VideoBackground.tsx, branch on
+`Platform.OS === "web"` and render a raw HTML `<video autoPlay loop muted
+playsInline>` via React.createElement("video"), setting `el.muted = true` /
+`el.defaultMuted = true` in the ref BEFORE calling `el.play()`. Keep expo-video
+only for native (iOS/Android), where it still needs the `"use no memo"` directive
+to survive the React Compiler.
