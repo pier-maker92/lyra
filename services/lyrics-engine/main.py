@@ -22,7 +22,7 @@ from musixmatch import TrackData, fetch_track
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lyrics_catalog_db")
 COLLECTION_NAME = "song_lyrics_min"
 # Number of candidates pulled from Chroma
-CANDIDATE_K = 50
+CANDIDATE_K = 100
 MAX_FRAMES = 8
 EMBED_CONCURRENCY = 6
 
@@ -135,11 +135,11 @@ async def analyze(req: AnalyzeRequest) -> dict[str, list[LyricMatch]]:
                 detail=f"Embedding provider error: {exc.response.status_code}",
             ) from exc
 
-        # Pull the top candidates, filtering by length_bin
+        # Pull the top candidates, restricted to English lyrics (no length filter).
         result = collection.query(
             query_embeddings=[query_vector],
             n_results=CANDIDATE_K,
-            where={"length_bin": {"$in": ["25-50", "50-75", "75-100"]}},
+            where={"language": "en"},
             include=["distances", "metadatas"],
         )
 
