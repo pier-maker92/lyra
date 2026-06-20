@@ -47,3 +47,4 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+services/lyrics-engine/lyrics_catalog_db/
