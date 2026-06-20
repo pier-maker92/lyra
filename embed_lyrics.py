@@ -12,8 +12,8 @@ from moods import MOODS, apply_affinity, top_mood
 
 def clean_stanza(text: str) -> str:
     """Rimuove il testo tra parentesi e normalizza gli spazi."""
-    text = re.sub(r'\(.*?\)', '', text)
-    text = re.sub(r'\s+', ' ', text).strip()
+    text = re.sub(r"\(.*?\)", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
     return text
 
 
@@ -23,14 +23,28 @@ def is_too_repetitive(text: str) -> bool:
     if not words:
         return True
 
-    clean_words = [re.sub(r'[^\w\s]', '', w) for w in words]
+    clean_words = [re.sub(r"[^\w\s]", "", w) for w in words]
     clean_words = [w for w in clean_words if w]
 
     if not clean_words:
         return True
 
     unique_clean = set(clean_words)
-    vocalizations = {'oh', 'ah', 'la', 'na', 'eh', 'yeah', 'ooh', 'hey', 'uh', 'da', 'doo', 'dum', 'eeeh'}
+    vocalizations = {
+        "oh",
+        "ah",
+        "la",
+        "na",
+        "eh",
+        "yeah",
+        "ooh",
+        "hey",
+        "uh",
+        "da",
+        "doo",
+        "dum",
+        "eeeh",
+    }
 
     if all(w in vocalizations for w in unique_clean):
         return True
@@ -98,7 +112,7 @@ def main():
     parser.add_argument(
         "--input_file",
         type=str,
-        default="/Users/software/lyra/lyrics_dataset.jsonl",
+        default="lyrics_dataset.jsonl",
         help="Path to the JSON/JSONL dataset file",
     )
     args = parser.parse_args()
@@ -130,7 +144,9 @@ def main():
             # Extract genre
             genre = "Unknown"
             try:
-                genre_list = track_data["track_data"]["primary_genres"]["music_genre_list"]
+                genre_list = track_data["track_data"]["primary_genres"][
+                    "music_genre_list"
+                ]
                 if genre_list:
                     genre = genre_list[0]["music_genre"]["music_genre_name_extended"]
             except (KeyError, IndexError, TypeError):
@@ -160,7 +176,7 @@ def main():
                 seen_ids.add(chunk_id)
 
                 cleaned_stanza = clean_stanza(stanza)
-                
+
                 # Scarta se vuota o troppo ripetitiva
                 if not cleaned_stanza or is_too_repetitive(cleaned_stanza):
                     continue
@@ -195,7 +211,9 @@ def main():
     )
 
     print("Assigning moods to stanzas...")
-    for j, (vec, meta) in enumerate(tqdm(zip(embeddings, all_metadatas), total=total_chunks, desc="Assigning moods")):
+    for j, (vec, meta) in enumerate(
+        tqdm(zip(embeddings, all_metadatas), total=total_chunks, desc="Assigning moods")
+    ):
         mood = assign_mood(vec, mood_anchors, meta["genre"])
         all_metadatas[j]["mood"] = mood
 
