@@ -51,7 +51,7 @@ function LyricBlock({
   const lines = useMemo(
     () =>
       match.lyric
-        .split("/")
+        .split(/[\n/]+/)
         .map((line) => line.trim())
         .filter(Boolean)
         .map((line) => line.split(/\s+/).filter(Boolean)),

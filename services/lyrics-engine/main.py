@@ -17,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from embeddings import embed_visual_frames
-from musixmatch import MusixmatchError, fetch_track
+from musixmatch import TrackData, fetch_track
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lyrics_catalog_db")
 COLLECTION_NAME = "song_lyrics_min"
@@ -147,45 +147,43 @@ async def analyze(req: AnalyzeRequest) -> dict[str, list[LyricMatch]]:
         distances = (result.get("distances") or [[]])[0]
         metadatas = (result.get("metadatas") or [[]])[0]
 
+        # Keep ALL candidates in visual-distance order — "best" is simply the
+        # top-K results (no dedup). Moods are buckets over the same candidates.
         best_picks: list[tuple[str, int, float, str]] = []
         per_mood_picks: dict[str, list[tuple[str, int, float, str]]] = {}
-        seen_tracks: set[str] = set()
+        needed_tracks: set[str] = set()
 
         for embedding_id, dist, meta in zip(ids, distances, metadatas):
             track_id, stanza_index = _parse_embedding_id(str(embedding_id))
-            if track_id in seen_tracks:
-                continue
-            seen_tracks.add(track_id)
+            needed_tracks.add(track_id)
 
             mood = str(meta.get("mood") or "Unknown") if meta else "Unknown"
 
             pick = (track_id, stanza_index, float(dist), mood)
             best_picks.append(pick)
+            per_mood_picks.setdefault(mood, []).append(pick)
 
-            if mood not in per_mood_picks:
-                per_mood_picks[mood] = []
-            per_mood_picks[mood].append(pick)
+        needed = list(needed_tracks)
 
-        needed = list(seen_tracks)
+        # Resolve lyrics/artist/title from Musixmatch. A single unavailable track
+        # must not sink the whole response, so failures are dropped per-track.
+        fetched = await asyncio.gather(
+            *[fetch_track(client, track_id) for track_id in needed],
+            return_exceptions=True,
+        )
 
-        try:
-            fetched = await asyncio.gather(
-                *[fetch_track(client, track_id) for track_id in needed]
-            )
-        except httpx.HTTPStatusError as exc:
-            raise HTTPException(
-                status_code=502,
-                detail=f"Musixmatch request failed: {exc.response.status_code}",
-            ) from exc
-        except MusixmatchError as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-    tracks = dict(zip(needed, fetched))
+    tracks: dict[str, TrackData] = {
+        track_id: data
+        for track_id, data in zip(needed, fetched)
+        if isinstance(data, TrackData)
+    }
 
     def _to_matches(picks) -> list[LyricMatch]:
         matches: list[LyricMatch] = []
         for track_id, stanza_index, distance, _ in picks:
-            data = tracks[track_id]
+            data = tracks.get(track_id)
+            if data is None:
+                continue
             matches.append(
                 LyricMatch(
                     lyric=_stanza_at(data.lyrics, stanza_index),
@@ -196,9 +194,25 @@ async def analyze(req: AnalyzeRequest) -> dict[str, list[LyricMatch]]:
             )
         return matches
 
-    response: dict[str, list[LyricMatch]] = {}
-    response["best"] = _to_matches(best_picks)
-    for mood, picks in per_mood_picks.items():
-        response[mood] = _to_matches(picks)
+    best_matches = _to_matches(best_picks)
+    if not best_matches:
+        raise HTTPException(
+            status_code=502,
+            detail="Musixmatch returned no usable lyrics for any candidate",
+        )
+
+    # Build mood buckets first, then order by their ACTUAL returned lyric counts
+    # (after dropping tracks Musixmatch could not resolve), not the raw Chroma hits.
+    mood_buckets = [
+        (mood, matches)
+        for mood, picks in per_mood_picks.items()
+        if (matches := _to_matches(picks))
+    ]
+    mood_buckets.sort(key=lambda kv: len(kv[1]), reverse=True)
+
+    # "best" leads; mood buckets follow ordered by how many lyrics each holds.
+    response: dict[str, list[LyricMatch]] = {"best": best_matches}
+    for mood, matches in mood_buckets:
+        response[mood] = matches
 
     return response

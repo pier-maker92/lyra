@@ -37,12 +37,14 @@ gitignored). It is swappable; a swap can change row count AND the mood vocabular
 ## Real catalog + Musixmatch (important)
 Real Chroma ids are `{track_id}_stanza_{j}` (numeric Musixmatch track_id + stanza
 index); metadata only has `genre`/`language` — NO lyric/artist/title. So `analyze`
-dedupes query hits by `track_id`, then resolves artist/title/lyrics from Musixmatch
-(`track.get` + `track.lyrics.get`, keyed by `track_id`) and picks stanza `j` by
-splitting lyrics on blank lines (`\n\n`). `musixmatch.py` caches per `track_id`
-(process-wide) — one `analyze` can need ~25 tracks, so the cache matters for plan limits.
-Musixmatch failures propagate as explicit 502s (no silent fallback). Needs
-`MUSIXMATCH_API_KEY` secret.
+resolves artist/title/lyrics from Musixmatch (`track.get` + `track.lyrics.get`, keyed
+by `track_id`) and picks stanza `j` by splitting lyrics on blank lines (`\n\n`).
+`musixmatch.py` caches per `track_id` (process-wide) — one `analyze` can need ~50
+tracks, so the cache matters for plan limits. Needs `MUSIXMATCH_API_KEY` secret.
+**Per-track resilience:** `analyze` gathers fetches with `return_exceptions=True` and
+DROPS tracks Musixmatch can't resolve, so one bad track no longer 502s the whole
+request; it only 502s if EVERY candidate fails (empty `best`). `fetch_track` itself
+still raises on incomplete data — the resilience is at the `analyze` call site.
 **Danger:** `seed.py` wipes+rebuilds `song_lyrics_min` — gated behind `ALLOW_SEED_RESET=1`
 + a catalog arg so it can never nuke the real DB. The placeholder `catalog.json` is gone.
 
@@ -82,10 +84,12 @@ ingestion and stored in each stanza's Chroma metadata (`mood`, plus `genre`,
 `language`, `length_bin`). At request time the engine:
 - embeds the image(s) PURELY visually (no text prompt; video = average of frame
   vectors) — see embeddings.embed_visual_frames(client, frames),
-- queries Chroma top CANDIDATE_K with a `where` filter on `length_bin`
+- queries Chroma top CANDIDATE_K (50) with a `where` filter on `length_bin`
   (`$in ["25-50","50-75","75-100"]`) to keep short, punchy stanzas,
-- dedupes by track_id and returns a dict: `best` (pure visual-distance order)
-  plus one bucket per mood ACTUALLY retrieved.
+- returns a dict: `best` = simply the top-K results (NO dedup — per the user, all 50)
+  in pure visual-distance order, plus one bucket per mood ACTUALLY retrieved. Mood
+  buckets are ordered by their ACTUAL returned lyric count (post-Musixmatch-filter,
+  computed AFTER dropping unresolved tracks — not the raw Chroma hit count).
 
 **The mood taxonomy is dynamic and large** (e.g. romantic_love, street_hustle,
 euphoria_dance, freedom_adventure, chill_relaxed, ... ~19 values), NOT the old
