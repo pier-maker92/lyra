@@ -6,9 +6,10 @@ description: How the Visual Lyrics app is wired across three services, and the p
 # Visual Lyrics
 
 Expo mobile app (TikTok/Reels style). User picks a photo/video -> client resizes to a
-JPEG data URL (height 720) -> POST /api/analyze -> response is keyed by 5 moods
-(love/adventure/funny/chill/party), each an array of lyric matches -> full-screen
-reels player (swipe horizontal = change mood, vertical = change match).
+JPEG data URL (height 720) -> POST /api/analyze -> response is a map: a guaranteed
+`best` bucket plus one bucket per mood actually found, each an array of lyric matches
+-> full-screen reels player (swipe horizontal = change bucket, vertical = change match).
+See the mood-logic section below — the mood taxonomy is dynamic, NOT a fixed 5.
 
 ## Three services
 - `artifacts/mobile` — Expo client (the only artifact for this product).
@@ -27,9 +28,11 @@ itself (Expo Launch / App Store) is independent, but it points at the production
 domain, so the backend must be fixed first or analysis breaks in prod.
 
 ## Embedding/retrieval note
-Mood conditioning works at the prompt level. The catalog is the user's REAL ChromaDB
-(collection `song_lyrics_min`, ~80k stanzas, cosine, 2048-dim) installed at
-`services/lyrics-engine/lyrics_catalog_db/` (~700MB, not gitignored).
+The image query is PURELY visual (no text prompt; video = average of frame vectors).
+Mood is NOT computed at request time — it is precomputed at catalog ingestion and stored
+in Chroma metadata. The catalog is the user's REAL ChromaDB (collection `song_lyrics_min`,
+cosine, 2048-dim) installed at `services/lyrics-engine/lyrics_catalog_db/` (~700MB, not
+gitignored). It is swappable; a swap can change row count AND the mood vocabulary.
 
 ## Real catalog + Musixmatch (important)
 Real Chroma ids are `{track_id}_stanza_{j}` (numeric Musixmatch track_id + stanza
@@ -71,16 +74,26 @@ playsInline>` via React.createElement("video"), setting `el.muted = true` /
 only for native (iOS/Android), where it still needs the `"use no memo"` directive
 to survive the React Compiler.
 
-## Mood logic: mood-agnostic retrieval + cosine clustering
 
-The engine does NOT query Chroma per mood. It embeds the frames once with a
-neutral prompt (DEFAULT_QUERY_PROMPT), pulls the top CANDIDATE_K (25) candidates
-WITH their embeddings (include=["distances","embeddings"]), then assigns each
-unique track to the mood whose precomputed text embedding (moods.MOOD_TEXTS,
-cached in _mood_embeddings) has the highest cosine similarity. Per-mood lists are
-sorted by that similarity and capped at RESULTS_PER_MOOD.
+## Mood logic: precomputed mood metadata + best/dynamic-mood response
 
-**Consequence:** the 5 buckets are NOT balanced — a scene that leans one way can
-leave some moods empty (the UI already handles empty moods). This is expected, not
-a bug. To rebalance you would change the clustering (e.g. top-N per mood) rather
-than the retrieval.
+The mood is NOT computed at request time. It is precomputed during catalog
+ingestion and stored in each stanza's Chroma metadata (`mood`, plus `genre`,
+`language`, `length_bin`). At request time the engine:
+- embeds the image(s) PURELY visually (no text prompt; video = average of frame
+  vectors) — see embeddings.embed_visual_frames(client, frames),
+- queries Chroma top CANDIDATE_K with a `where` filter on `length_bin`
+  (`$in ["25-50","50-75","75-100"]`) to keep short, punchy stanzas,
+- dedupes by track_id and returns a dict: `best` (pure visual-distance order)
+  plus one bucket per mood ACTUALLY retrieved.
+
+**The mood taxonomy is dynamic and large** (e.g. romantic_love, street_hustle,
+euphoria_dance, freedom_adventure, chill_relaxed, ... ~19 values), NOT the old
+fixed 5. So the API contract `AnalyzeResponse` is a map (`additionalProperties`),
+not fixed keys. The mobile player derives its mood tabs from `Object.keys(results)`
+(best first), and constants/moods.ts maps each catalog mood id to an Italian
+label/color/icon with a prettified fallback for unmapped ids.
+
+**Why:** the user replaced the catalog with one that embeds mood at ingestion.
+Any future catalog swap can change the mood vocabulary again — keep the contract
+and UI taxonomy-agnostic (map + fallback), never hardcode the mood set.

@@ -11,7 +11,7 @@ export interface HealthStatus {
 
 export interface AnalyzeRequest {
   /**
-     * Ordered list of base64 JPEG data URLs. For an image this is a single frame; for a video, frames sampled at ~1fps. Their embeddings are averaged into one query per mood.
+     * Ordered list of base64 JPEG data URLs. For an image this is a single frame; for a video, frames sampled at ~1fps. Their embeddings are averaged into one mood-agnostic query vector.
      * @minItems 1
      */
   frames: string[];
@@ -24,11 +24,11 @@ export interface LyricMatch {
   distance: number;
 }
 
+/**
+ * Matches keyed by bucket. The `best` key always holds the absolute best matches ordered by pure visual distance. Every other key is a mood that was actually retrieved from the catalog (the mood taxonomy is dynamic, so the set of those keys varies per request).
+ */
 export interface AnalyzeResponse {
-  love: LyricMatch[];
-  adventure: LyricMatch[];
-  funny: LyricMatch[];
-  chill: LyricMatch[];
-  party: LyricMatch[];
+  best: LyricMatch[];
+  [key: string]: LyricMatch[];
 }
 

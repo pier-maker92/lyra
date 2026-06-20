@@ -18,47 +18,23 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
- * Embeds the image per mood and returns top unique lyric matches for each mood.
+ * Embeds the visual (image, or the averaged frames of a video) with a single mood-agnostic query, retrieves the top lyric matches from the catalog, and returns them as `best` (pure visual-distance order) plus a dynamic bucket per mood found in the results (mood is stored in catalog metadata).
  * @summary Match lyrics to a visual
  */
 
 
 
 export const AnalyzeVisualBody = zod.object({
-  "frames": zod.array(zod.string()).min(1).describe('Ordered list of base64 JPEG data URLs. For an image this is a single frame; for a video, frames sampled at ~1fps. Their embeddings are averaged into one query per mood.')
+  "frames": zod.array(zod.string()).min(1).describe('Ordered list of base64 JPEG data URLs. For an image this is a single frame; for a video, frames sampled at ~1fps. Their embeddings are averaged into one mood-agnostic query vector.')
 })
 
 export const AnalyzeVisualResponse = zod.object({
-  "love": zod.array(zod.object({
-  "lyric": zod.string(),
-  "artist": zod.string(),
-  "track": zod.string(),
-  "distance": zod.number()
-})),
-  "adventure": zod.array(zod.object({
-  "lyric": zod.string(),
-  "artist": zod.string(),
-  "track": zod.string(),
-  "distance": zod.number()
-})),
-  "funny": zod.array(zod.object({
-  "lyric": zod.string(),
-  "artist": zod.string(),
-  "track": zod.string(),
-  "distance": zod.number()
-})),
-  "chill": zod.array(zod.object({
-  "lyric": zod.string(),
-  "artist": zod.string(),
-  "track": zod.string(),
-  "distance": zod.number()
-})),
-  "party": zod.array(zod.object({
+  "best": zod.array(zod.object({
   "lyric": zod.string(),
   "artist": zod.string(),
   "track": zod.string(),
   "distance": zod.number()
 }))
-})
+}).describe('Matches keyed by bucket. The `best` key always holds the absolute best matches ordered by pure visual distance. Every other key is a mood that was actually retrieved from the catalog (the mood taxonomy is dynamic, so the set of those keys varies per request).')
 
 

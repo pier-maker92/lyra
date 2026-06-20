@@ -7,10 +7,10 @@
  */
 import type { LyricMatch } from './lyricMatch';
 
+/**
+ * Matches keyed by bucket. The `best` key always holds the absolute best matches ordered by pure visual distance. Every other key is a mood that was actually retrieved from the catalog (the mood taxonomy is dynamic, so the set of those keys varies per request).
+ */
 export interface AnalyzeResponse {
-  love: LyricMatch[];
-  adventure: LyricMatch[];
-  funny: LyricMatch[];
-  chill: LyricMatch[];
-  party: LyricMatch[];
+  best: LyricMatch[];
+  [key: string]: LyricMatch[];
 }

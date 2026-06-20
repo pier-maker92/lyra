@@ -22,7 +22,7 @@ import {
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { MOOD_META, MOODS } from "@/constants/moods";
+import { BEST_KEY, getMoodMeta } from "@/constants/moods";
 import { VideoBackground } from "@/components/VideoBackground";
 import type { PickedMedia } from "@/lib/media";
 import type { AnalyzeResponse, LyricMatch } from "@workspace/api-client-react";
@@ -170,16 +170,29 @@ export function ReelsPlayer({ media, results, onReset }: Props) {
   const moodIndexRef = useRef(0);
   const matchIndexRef = useRef(0);
 
+  // The engine returns "best" first, then a dynamic bucket per retrieved mood.
+  // Keep that order, with "best" guaranteed to lead.
+  const moodKeys = useMemo(() => {
+    const keys = Object.keys(results);
+    const rest = keys.filter((k) => k !== BEST_KEY);
+    return keys.includes(BEST_KEY) ? [BEST_KEY, ...rest] : rest;
+  }, [results]);
+
   const matchesByMood = useMemo(
-    () => MOODS.map((mood) => results[mood] ?? []),
-    [results],
+    () => moodKeys.map((mood) => results[mood] ?? []),
+    [results, moodKeys],
   );
 
   const matchesByMoodRef = useRef(matchesByMood);
   matchesByMoodRef.current = matchesByMood;
 
+  const moodKeysRef = useRef(moodKeys);
+  moodKeysRef.current = moodKeys;
+
   const changeMood = useCallback((dir: number) => {
-    const next = (moodIndexRef.current + dir + MOODS.length) % MOODS.length;
+    const count = moodKeysRef.current.length;
+    if (count === 0) return;
+    const next = (moodIndexRef.current + dir + count) % count;
     moodIndexRef.current = next;
     matchIndexRef.current = 0;
     setMoodIndex(next);
@@ -223,9 +236,9 @@ export function ReelsPlayer({ media, results, onReset }: Props) {
     [changeMood, changeMatch],
   );
 
-  const currentMood = MOODS[moodIndex];
-  const meta = MOOD_META[currentMood];
-  const currentList = matchesByMood[moodIndex];
+  const currentMood = moodKeys[moodIndex] ?? BEST_KEY;
+  const meta = getMoodMeta(currentMood);
+  const currentList = matchesByMood[moodIndex] ?? [];
   const currentMatch: LyricMatch | undefined = currentList[matchIndex];
 
   return (
@@ -296,7 +309,7 @@ export function ReelsPlayer({ media, results, onReset }: Props) {
       </View>
 
       <View style={[styles.dotsRow, { top: topInset + 64 }]}>
-        {MOODS.map((mood, i) => (
+        {moodKeys.map((mood, i) => (
           <View
             key={mood}
             style={[

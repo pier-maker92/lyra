@@ -31,7 +31,12 @@ paths:
       operationId: analyzeVisual
       tags: [lyrics]
       summary: Match lyrics to a visual
-      description: Embeds the image per mood and returns top unique lyric matches for each mood.
+      description: >-
+        Embeds the visual (image, or the averaged frames of a video) with a
+        single mood-agnostic query, retrieves the top lyric matches from the
+        catalog, and returns them as `best` (pure visual-distance order) plus a
+        dynamic bucket per mood found in the results (mood is stored in catalog
+        metadata).
       requestBody:
         required: true
         content:
@@ -63,7 +68,7 @@ components:
           description: >-
             Ordered list of base64 JPEG data URLs. For an image this is a single
             frame; for a video, frames sampled at ~1fps. Their embeddings are
-            averaged into one query per mood.
+            averaged into one mood-agnostic query vector.
           items:
             type: string
       required:
@@ -86,31 +91,20 @@ components:
         - distance
     AnalyzeResponse:
       type: object
+      description: >-
+        Matches keyed by bucket. The `best` key always holds the absolute best
+        matches ordered by pure visual distance. Every other key is a mood that
+        was actually retrieved from the catalog (the mood taxonomy is dynamic, so
+        the set of those keys varies per request).
       properties:
-        love:
-          type: array
-          items:
-            $ref: "#/components/schemas/LyricMatch"
-        adventure:
-          type: array
-          items:
-            $ref: "#/components/schemas/LyricMatch"
-        funny:
-          type: array
-          items:
-            $ref: "#/components/schemas/LyricMatch"
-        chill:
-          type: array
-          items:
-            $ref: "#/components/schemas/LyricMatch"
-        party:
+        best:
           type: array
           items:
             $ref: "#/components/schemas/LyricMatch"
       required:
-        - love
-        - adventure
-        - funny
-        - chill
-        - party
+        - best
+      additionalProperties:
+        type: array
+        items:
+          $ref: "#/components/schemas/LyricMatch"
 

@@ -1,13 +1,13 @@
 """Visual-to-Lyrics retrieval engine.
 
-FastAPI service that embeds an uploaded image (mood-agnostic, purely visual) with
-OpenRouter, then queries a local ChromaDB catalog of song lyrics for the top
-candidates. The mood is precomputed and stored in each stanza's metadata, so the
-response exposes a ``best`` ordering (pure visual distance) plus a dynamic bucket
-per mood that was actually retrieved.
+FastAPI service that embeds an uploaded image (mood-agnostic) with OpenRouter,
+queries a local ChromaDB catalog of song lyrics for the top candidates, then
+clusters those candidates into the 5 moods by cosine similarity between each
+retrieved lyric embedding and the precomputed embedding of each mood.
 """
 
 import asyncio
+import math
 import os
 
 import chromadb
@@ -70,8 +70,8 @@ def _parse_embedding_id(embedding_id: str) -> tuple[str, int]:
     """Split a catalog embedding id ``{track_id}_stanza_{j}`` into its parts.
 
     The user's real ChromaDB encodes the Musixmatch track_id plus the stanza index
-    in the id; the metadata carries ``genre``/``language``/``length_bin``/``mood``.
-    track_id itself is numeric, so we split on the last ``_stanza_`` separator.
+    in the id; the metadata only carries ``genre``/``language``. track_id itself is
+    numeric, so we split on the last ``_stanza_`` separator.
     """
     marker = "_stanza_"
     idx = embedding_id.rfind(marker)
@@ -90,6 +90,9 @@ def _parse_embedding_id(embedding_id: str) -> tuple[str, int]:
             detail=f"Unexpected stanza index in id: {embedding_id!r}",
         ) from exc
     return track_id, stanza_index
+
+
+
 
 
 def _stanza_at(lyrics: str, index: int) -> str:
@@ -142,7 +145,7 @@ async def analyze(req: AnalyzeRequest) -> dict[str, list[LyricMatch]]:
             where={"length_bin": {"$in": ["25-50", "50-75", "75-100"]}},
             include=["distances", "metadatas"],
         )
-
+        
         ids = (result.get("ids") or [[]])[0]
         distances = (result.get("distances") or [[]])[0]
         metadatas = (result.get("metadatas") or [[]])[0]
@@ -150,24 +153,24 @@ async def analyze(req: AnalyzeRequest) -> dict[str, list[LyricMatch]]:
         best_picks: list[tuple[str, int, float, str]] = []
         per_mood_picks: dict[str, list[tuple[str, int, float, str]]] = {}
         seen_tracks: set[str] = set()
-
+        
         for embedding_id, dist, meta in zip(ids, distances, metadatas):
             track_id, stanza_index = _parse_embedding_id(str(embedding_id))
             if track_id in seen_tracks:
                 continue
             seen_tracks.add(track_id)
-
-            mood = str(meta.get("mood") or "Unknown") if meta else "Unknown"
-
+            
+            mood = meta.get("mood", "Unknown") if meta else "Unknown"
+            
             pick = (track_id, stanza_index, float(dist), mood)
             best_picks.append(pick)
-
+            
             if mood not in per_mood_picks:
                 per_mood_picks[mood] = []
             per_mood_picks[mood].append(pick)
 
         needed = list(seen_tracks)
-
+        
         try:
             fetched = await asyncio.gather(
                 *[fetch_track(client, track_id) for track_id in needed]
@@ -200,5 +203,5 @@ async def analyze(req: AnalyzeRequest) -> dict[str, list[LyricMatch]]:
     response["best"] = _to_matches(best_picks)
     for mood, picks in per_mood_picks.items():
         response[mood] = _to_matches(picks)
-
+    
     return response

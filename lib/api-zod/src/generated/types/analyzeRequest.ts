@@ -8,7 +8,7 @@
 
 export interface AnalyzeRequest {
   /**
-     * Ordered list of base64 JPEG data URLs. For an image this is a single frame; for a video, frames sampled at ~1fps. Their embeddings are averaged into one query per mood.
+     * Ordered list of base64 JPEG data URLs. For an image this is a single frame; for a video, frames sampled at ~1fps. Their embeddings are averaged into one mood-agnostic query vector.
      * @minItems 1
      */
   frames: string[];
