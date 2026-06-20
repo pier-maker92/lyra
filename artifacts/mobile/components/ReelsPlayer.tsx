@@ -290,7 +290,9 @@ export function ReelsPlayer({ media, results, onReset }: Props) {
           </Text>
         </View>
 
-        <View style={styles.iconButton} />
+        <View style={styles.iconButton}>
+          <Text style={styles.brandText}>LYRO</Text>
+        </View>
       </View>
 
       <View style={[styles.dotsRow, { top: topInset + 64 }]}>
@@ -374,6 +376,13 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.3)",
   },
   pressed: { opacity: 0.6 },
+  brandText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+    letterSpacing: 2,
+    color: "rgba(255,255,255,0.6)",
+    paddingLeft: 2,
+  },
   moodBadge: {
     flexDirection: "row",
     alignItems: "center",

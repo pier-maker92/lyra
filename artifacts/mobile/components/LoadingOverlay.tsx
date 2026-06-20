@@ -2,7 +2,8 @@ import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { StatusBar } from "expo-status-bar";
 import React from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Platform, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { VideoBackground } from "@/components/VideoBackground";
 import type { PickedMedia } from "@/lib/media";
@@ -12,6 +13,9 @@ interface Props {
 }
 
 export function LoadingOverlay({ media }: Props) {
+  const insets = useSafeAreaInsets();
+  const topInset = Platform.OS === "web" ? 67 : insets.top;
+
   return (
     <View style={styles.container}>
       <StatusBar style="light" />
@@ -29,6 +33,9 @@ export function LoadingOverlay({ media }: Props) {
         colors={["rgba(0,0,0,0.6)", "rgba(0,0,0,0.85)"]}
         style={StyleSheet.absoluteFill}
       />
+      <View style={[styles.brand, { top: topInset + 18 }]} pointerEvents="none">
+        <Text style={styles.brandText}>LYRO</Text>
+      </View>
       <View style={styles.center}>
         <ActivityIndicator size="large" color="#ffffff" />
         <Text style={styles.text}>
@@ -41,6 +48,19 @@ export function LoadingOverlay({ media }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#000000" },
+  brand: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    alignItems: "center",
+  },
+  brandText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 16,
+    letterSpacing: 6,
+    color: "rgba(255,255,255,0.85)",
+    paddingLeft: 6,
+  },
   center: {
     flex: 1,
     alignItems: "center",

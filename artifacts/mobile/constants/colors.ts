@@ -1,5 +1,5 @@
 /**
- * Semantic design tokens for LYRA — a dark, full-bleed media app.
+ * Semantic design tokens for LYRO — a dark, full-bleed media app.
  */
 
 const colors = {

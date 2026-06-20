@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const lyraLogo = require("../assets/images/lyra-logo.png");
+const lyroLogo = require("../assets/images/lyro-logo.png");
 
 interface Props {
   onUseCamera: () => void;
@@ -37,10 +37,10 @@ export function HomeScreen({ onUseCamera, onUseLibrary }: Props) {
       <View style={[styles.content, { paddingTop: topInset + 24 }]}>
         <View style={styles.hero}>
           <Image
-            source={lyraLogo}
+            source={lyroLogo}
             style={styles.logo}
             contentFit="contain"
-            accessibilityLabel="LYRA"
+            accessibilityLabel="LYRO"
           />
           <Text style={styles.subtitle}>
             Lost for words? Say it with lyrics
