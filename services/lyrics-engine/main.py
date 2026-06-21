@@ -16,6 +16,8 @@ import os
 import chromadb
 import httpx
 from fastapi import FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -46,6 +48,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc):
+    print(f"DEBUG 422: {exc.errors()} - Body: {await request.body()}")
+    return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
 _client = chromadb.PersistentClient(path=DB_PATH)
 
