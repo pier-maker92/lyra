@@ -63,6 +63,21 @@ thus sentence-transformers 5.6.0) is unsatisfiable, and the publish build fails 
 still fails, because the build re-resolves fresh. To reproduce the build faithfully, `rm uv.lock &&
 uv lock` from scratch and confirm there are NO `python_full_version == '3.12'/'3.13'` markers left.
 
+## Deploy build pypi mirror LAGS the latest release — never pin a dep to the absolute newest
+The deploy publish build resolves Python deps against a Replit pypi mirror/cache that is slightly
+BEHIND real pypi.org: it has every version EXCEPT the very newest release of each package. Symptom:
+publish build `uv sync` fails "Because only <pkg> < X.Y.Z is available and your project depends on
+>= X.Y.Z" even though `uv lock` in the same build "succeeds" (lock step only validates the committed
+lock structurally; sync does the real index query and discovers the newest version is missing).
+**This is NOT reproducible locally** — the local container reaches fresh pypi.org which HAS the
+newest, so local `uv lock`/`uv sync`/`--no-cache --refresh` all pass while the deploy build fails.
+**Rule:** in root `pyproject.toml`, do not pin any dependency to its current absolute-latest pypi
+version. Cap each heavy/edge dep to a range ending just below latest, e.g. `>=5.5.1,<5.6.0`, so the
+lock pins the second-newest version (which the lagging mirror has). torch is exempt — it comes from
+the separate `pytorch-cpu` index (download.pytorch.org), not the lagging mirror.
+**How to apply:** for each dep, `curl -s https://pypi.org/pypi/<pkg>/json` to get the latest +
+prior versions; if your pin == latest, change it to `>=<second-newest>,<<latest>` and `uv lock`.
+
 ## Embedding/retrieval note
 The image query is PURELY visual (no text prompt; video = average of frame vectors).
 Embeddings are computed LOCALLY with TinyCLIP (no OpenRouter/network) — see
