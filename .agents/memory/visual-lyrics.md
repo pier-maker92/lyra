@@ -51,13 +51,17 @@ re-lock and redeploy.
 torch-family wheels — mapping `sentence-transformers`/`transformers` there makes uv unable to
 find recent versions ("only <X available"). Keep ONLY `torch` mapped to pytorch-cpu; let the
 rest resolve from PyPI. (2) `requires-python` was `>=3.11` which forced resolution for 3.14+
-where sentence-transformers 5.6.0 has no wheel; capped to `>=3.11,<3.13` (runtime is 3.11).
-**The cap must be `<3.13`, not `<3.14`:** the deploy build runs `uv sync` which validates the
-FULL requires-python range (not just the active 3.11). torch 2.12.1+cpu has no cp313 wheel on the
-pytorch-cpu index, so the 3.13 split makes sentence-transformers 5.6.0 unsatisfiable and the
-publish build fails with "No solution found ... python_full_version == '3.13.*'". `uv lock` can
-succeed locally while the build's `uv sync` still fails on an excluded-but-in-range split — always
-re-run `uv sync` (not just `uv lock`) locally to catch this before redeploying.
+where there's no matching wheel. **The cap must pin to EXACTLY 3.11: `>=3.11,<3.12`.**
+**Why so tight:** the deploy build runs `uv lock` + `uv sync` and validates EVERY python minor in
+the requires-python range, not just the active 3.11. `torch 2.12.1+cpu` on the pytorch-cpu index
+(download.pytorch.org/whl/cpu) ships ONLY a cp311 wheel — there is no cp312/cp313 build. So any
+range wider than 3.11 (e.g. `<3.13` or `<3.14`) leaves a 3.12.* or 3.13.* split where torch (and
+thus sentence-transformers 5.6.0) is unsatisfiable, and the publish build fails with
+"No solution found ... python_full_version == '3.1X.*'". The deploy runtime is python-3.11
+(`.replit` modules) anyway, so pinning to 3.11 only is correct.
+**Verification gotcha:** a local `uv lock`/`uv sync` can pass on a too-wide range while the build
+still fails, because the build re-resolves fresh. To reproduce the build faithfully, `rm uv.lock &&
+uv lock` from scratch and confirm there are NO `python_full_version == '3.12'/'3.13'` markers left.
 
 ## Embedding/retrieval note
 The image query is PURELY visual (no text prompt; video = average of frame vectors).
