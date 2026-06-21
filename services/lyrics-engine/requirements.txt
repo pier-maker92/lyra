@@ -2,3 +2,7 @@ fastapi
 uvicorn[standard]
 chromadb
 httpx
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.12.1+cpu
+sentence-transformers
+pillow

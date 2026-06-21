@@ -37,7 +37,7 @@ left/right to change mood and up/down to move between matches.
 
 - Frontend: `artifacts/mobile` (Expo). Single screen `app/index.tsx` (home -> loading -> player).
 - Backend proxy: `artifacts/api-server` `/api/analyze`.
-- Engine: `services/lyrics-engine` (Python FastAPI + ChromaDB + OpenRouter embeddings), port 8000.
+- Engine: `services/lyrics-engine` (Python FastAPI + ChromaDB + local TinyCLIP embeddings), port 8000.
 
 ## Architecture decisions
 
@@ -52,9 +52,10 @@ left/right to change mood and up/down to move between matches.
 
 ## Gotchas
 
-- The lyrics engine uses the user's **real ChromaDB** at `services/lyrics-engine/lyrics_catalog_db/`
-  (collection `song_lyrics_min`, cosine, 2048-dim). Never run `seed.py` against it — it wipes
-  and rebuilds the collection. It is gated behind `ALLOW_SEED_RESET=1` + a catalog arg for safety.
+- The lyrics engine uses the user's **real ChromaDB** at `services/lyrics-engine/TinyCLAPdb/`
+  (collection `song_lyrics_min`, cosine, 512-dim, ~74k stanzas). Queries are embedded **locally**
+  with TinyCLIP — the catalog and query encoder must use the SAME model/dim. `seed.py` is an
+  obsolete reference script for the old OpenRouter catalog (broken import; never run it).
 - Chroma ids are `{track_id}_stanza_{j}`; lyric/artist/title come from **Musixmatch**, not Chroma
   metadata. Requires the `MUSIXMATCH_API_KEY` secret. A Musixmatch failure returns an explicit 502.
 

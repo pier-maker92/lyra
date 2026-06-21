@@ -15,8 +15,9 @@ See the mood-logic section below — the mood taxonomy is dynamic, NOT a fixed 5
 - `artifacts/mobile` — Expo client (the only artifact for this product).
 - `artifacts/api-server` — Express; `/api/analyze` is a thin proxy.
 - `services/lyrics-engine` — standalone Python FastAPI (uvicorn, port 8000) doing the
-  embeddings (OpenRouter `nvidia/llama-nemotron-embed-vl-1b-v2:free`, 2048-dim, text+image)
-  + ChromaDB retrieval. Express proxies to `localhost:8000`.
+  embeddings (LOCAL TinyCLIP `wkcn/TinyCLIP-ViT-8M-16-Text-3M-YFCC15M` via
+  sentence-transformers, 512-dim, image-only query) + ChromaDB retrieval. Express
+  proxies to `localhost:8000`. See lyrics-engine-tinyclip.md for the embedding details.
 
 ## Production deploy caveat (important)
 **Why:** `services/lyrics-engine` is run by a standalone Replit workflow, NOT registered
@@ -29,10 +30,12 @@ domain, so the backend must be fixed first or analysis breaks in prod.
 
 ## Embedding/retrieval note
 The image query is PURELY visual (no text prompt; video = average of frame vectors).
-Mood is NOT computed at request time — it is precomputed at catalog ingestion and stored
-in Chroma metadata. The catalog is the user's REAL ChromaDB (collection `song_lyrics_min`,
-cosine, 2048-dim) installed at `services/lyrics-engine/lyrics_catalog_db/` (~700MB, not
-gitignored). It is swappable; a swap can change row count AND the mood vocabulary.
+Embeddings are computed LOCALLY with TinyCLIP (no OpenRouter/network) — see
+embeddings.embed_frames(frames). Mood is NOT computed at request time — it is
+precomputed at catalog ingestion and stored in Chroma metadata. The catalog is the
+user's REAL ChromaDB (collection `song_lyrics_min`, cosine, 512-dim, ~74k stanzas) at
+`services/lyrics-engine/TinyCLAPdb/`. It is swappable; a swap can change row count,
+the mood vocabulary, AND the embedding model/dim (which must match the query encoder).
 
 ## Real catalog + Musixmatch (important)
 Real Chroma ids are `{track_id}_stanza_{j}` (numeric Musixmatch track_id + stanza
@@ -82,11 +85,11 @@ to survive the React Compiler.
 The mood is NOT computed at request time. It is precomputed during catalog
 ingestion and stored in each stanza's Chroma metadata (`mood`, plus `genre`,
 `language`, `length_bin`). At request time the engine:
-- embeds the image(s) PURELY visually (no text prompt; video = average of frame
-  vectors) — see embeddings.embed_visual_frames(client, frames),
-- queries Chroma top CANDIDATE_K (50) with a `where` filter on `length_bin`
-  (`$in ["25-50","50-75","75-100"]`) to keep short, punchy stanzas,
-- returns a dict: `best` = simply the top-K results (NO dedup — per the user, all 50)
+- embeds the image(s) PURELY visually with LOCAL TinyCLIP (no text prompt; video =
+  average of frame vectors) — see embeddings.embed_frames(frames),
+- queries Chroma top CANDIDATE_K (100) with a `where` filter combining `language=en`,
+  `explicit=0` (clean only), and `length_bin $in ["25-50".."125-150"]` (25–150 chars),
+- returns a dict: `best` = simply the top-K results (NO dedup — per the user, all 100)
   in pure visual-distance order, plus one bucket per mood ACTUALLY retrieved. Mood
   buckets are ordered by their ACTUAL returned lyric count (post-Musixmatch-filter,
   computed AFTER dropping unresolved tracks — not the raw Chroma hit count).

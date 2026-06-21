@@ -1,14 +1,15 @@
 """Visual-to-Lyrics retrieval engine.
 
 FastAPI service that embeds an uploaded image (mood-agnostic, purely visual) with
-OpenRouter, then queries a local ChromaDB catalog of song lyrics for the top
-candidates. The mood is precomputed and stored in each stanza's metadata, so the
-response exposes a ``best`` ordering (pure visual distance) plus a dynamic bucket
-per mood that was actually retrieved.
+a local TinyCLIP model, then queries a local ChromaDB catalog of song lyrics for
+the top candidates. The mood is precomputed and stored in each stanza's metadata,
+so the response exposes a ``best`` ordering (pure visual distance) plus a dynamic
+bucket per mood that was actually retrieved.
 """
 
 import asyncio
 import os
+from contextlib import asynccontextmanager
 
 import chromadb
 import httpx
@@ -16,17 +17,34 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from embeddings import embed_visual_frames
+from embeddings import embed_frames, get_model
 from musixmatch import TrackData, fetch_track
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lyrics_catalog_db")
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "TinyCLAPdb")
 COLLECTION_NAME = "song_lyrics_min"
 # Number of candidates pulled from Chroma
 CANDIDATE_K = 100
 MAX_FRAMES = 8
-EMBED_CONCURRENCY = 6
 
-app = FastAPI(title="Lyrics Engine")
+# Catalog filters: English, clean (non-explicit) lyrics, 25–150 characters.
+LENGTH_BINS = ["25-50", "50-75", "75-100", "100-125", "125-150"]
+WHERE_FILTER = {
+    "$and": [
+        {"language": "en"},
+        {"length_bin": {"$in": LENGTH_BINS}},
+        {"explicit": 0},
+    ]
+}
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Warm the TinyCLIP model so the first request isn't slow.
+    await asyncio.to_thread(get_model)
+    yield
+
+
+app = FastAPI(title="Lyrics Engine", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -123,50 +141,49 @@ async def analyze(req: AnalyzeRequest) -> dict[str, list[LyricMatch]]:
         ]
 
     collection = _collection()
-    semaphore = asyncio.Semaphore(EMBED_CONCURRENCY)
 
+    # One purely-visual query vector, embedded locally with TinyCLIP. The CPU
+    # work runs off the event loop so concurrent requests aren't blocked.
+    try:
+        query_vector = await asyncio.to_thread(embed_frames, frames)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400, detail=f"Could not decode frames: {exc}"
+        ) from exc
+
+    # Pull the top candidates: English, clean, 25–150 char lyrics.
+    result = collection.query(
+        query_embeddings=[query_vector],
+        n_results=CANDIDATE_K,
+        where=WHERE_FILTER,
+        include=["distances", "metadatas"],
+    )
+
+    ids = (result.get("ids") or [[]])[0]
+    distances = (result.get("distances") or [[]])[0]
+    metadatas = (result.get("metadatas") or [[]])[0]
+
+    # Keep ALL candidates in visual-distance order — "best" is simply the
+    # top-K results (no dedup). Moods are buckets over the same candidates.
+    best_picks: list[tuple[str, int, float, str]] = []
+    per_mood_picks: dict[str, list[tuple[str, int, float, str]]] = {}
+    needed_tracks: set[str] = set()
+
+    for embedding_id, dist, meta in zip(ids, distances, metadatas):
+        track_id, stanza_index = _parse_embedding_id(str(embedding_id))
+        needed_tracks.add(track_id)
+
+        mood = str(meta.get("mood") or "Unknown") if meta else "Unknown"
+
+        pick = (track_id, stanza_index, float(dist), mood)
+        best_picks.append(pick)
+        per_mood_picks.setdefault(mood, []).append(pick)
+
+    needed = list(needed_tracks)
+
+    # Resolve lyrics/artist/title from Musixmatch. A single unavailable track
+    # must not sink the whole response, so failures are dropped per-track.
     async with httpx.AsyncClient(timeout=120.0) as client:
-        try:
-            # One visual query vector without text
-            query_vector = await embed_visual_frames(client, frames, semaphore)
-        except httpx.HTTPStatusError as exc:
-            raise HTTPException(
-                status_code=502,
-                detail=f"Embedding provider error: {exc.response.status_code}",
-            ) from exc
-
-        # Pull the top candidates, restricted to English lyrics (no length filter).
-        result = collection.query(
-            query_embeddings=[query_vector],
-            n_results=CANDIDATE_K,
-            where={"language": "en"},
-            include=["distances", "metadatas"],
-        )
-
-        ids = (result.get("ids") or [[]])[0]
-        distances = (result.get("distances") or [[]])[0]
-        metadatas = (result.get("metadatas") or [[]])[0]
-
-        # Keep ALL candidates in visual-distance order — "best" is simply the
-        # top-K results (no dedup). Moods are buckets over the same candidates.
-        best_picks: list[tuple[str, int, float, str]] = []
-        per_mood_picks: dict[str, list[tuple[str, int, float, str]]] = {}
-        needed_tracks: set[str] = set()
-
-        for embedding_id, dist, meta in zip(ids, distances, metadatas):
-            track_id, stanza_index = _parse_embedding_id(str(embedding_id))
-            needed_tracks.add(track_id)
-
-            mood = str(meta.get("mood") or "Unknown") if meta else "Unknown"
-
-            pick = (track_id, stanza_index, float(dist), mood)
-            best_picks.append(pick)
-            per_mood_picks.setdefault(mood, []).append(pick)
-
-        needed = list(needed_tracks)
-
-        # Resolve lyrics/artist/title from Musixmatch. A single unavailable track
-        # must not sink the whole response, so failures are dropped per-track.
         fetched = await asyncio.gather(
             *[fetch_track(client, track_id) for track_id in needed],
             return_exceptions=True,

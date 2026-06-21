@@ -1,2 +1,5 @@
 services/lyrics-engine/lyrics_catalog_db/3ae21ec9-fb30-42fa-9a69-d4a00d3d3f53/data_level0.bin filter=lfs diff=lfs merge=lfs -text
 services/lyrics-engine/lyrics_catalog_db/chroma.sqlite3 filter=lfs diff=lfs merge=lfs -text
+services/lyrics-engine/TinyCLAPdb.zip filter=lfs diff=lfs merge=lfs -text
+services/lyrics-engine/TinyCLAPdb/29feaea2-f00b-4914-9fa9-b5c9b773a953/data_level0.bin filter=lfs diff=lfs merge=lfs -text
+services/lyrics-engine/TinyCLAPdb/chroma.sqlite3 filter=lfs diff=lfs merge=lfs -text

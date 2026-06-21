@@ -1,119 +1,61 @@
-"""OpenRouter multimodal embedding client.
+"""Local TinyCLIP visual embeddings.
 
-Uses nvidia/llama-nemotron-embed-vl-1b-v2:free which embeds text and images
-into the same 2048-dim vector space.
+Loads ``wkcn/TinyCLIP-ViT-8M-16-Text-3M-YFCC15M`` once and embeds query frames
+into the same 512-dim CLIP space as the catalog (``TinyCLAPdb``). Each frame is
+embedded individually and averaged into a single query vector — the same logic
+used to build the catalog (SentenceTransformer ``model.encode(image)``).
 """
 
-import asyncio
-import os
+import base64
+import binascii
+import threading
+from io import BytesIO
 
-import httpx
+import numpy as np
+from PIL import Image, UnidentifiedImageError
+from sentence_transformers import SentenceTransformer
 
-OPENROUTER_URL = "https://openrouter.ai/api/v1/embeddings"
-EMBED_MODEL = "nvidia/llama-nemotron-embed-vl-1b-v2:free"
+MODEL_NAME = "wkcn/TinyCLIP-ViT-8M-16-Text-3M-YFCC15M"
 
-
-def _api_key() -> str:
-    key = os.environ.get("OPENROUTER_API_KEY")
-    if not key:
-        raise RuntimeError("OPENROUTER_API_KEY is not set")
-    return key
-
-
-def _headers() -> dict:
-    return {
-        "Authorization": f"Bearer {_api_key()}",
-        "Content-Type": "application/json",
-    }
+_model: SentenceTransformer | None = None
+_model_lock = threading.Lock()
 
 
-def _extract(payload: dict) -> list[float]:
-    data = payload.get("data")
-    if not data:
-        raise RuntimeError(f"OpenRouter embedding error: {payload}")
-    return data[0]["embedding"]
+def get_model() -> SentenceTransformer:
+    """Lazily load (and cache) the TinyCLIP model singleton (thread-safe)."""
+    global _model
+    if _model is None:
+        with _model_lock:
+            if _model is None:
+                _model = SentenceTransformer(MODEL_NAME)
+    return _model
 
 
-def embed_text(text: str) -> list[float]:
-    """Synchronous text embedding (used by the seed script)."""
-    body = {
-        "model": EMBED_MODEL,
-        "input": [{"content": [{"type": "text", "text": text}]}],
-        "encoding_format": "float",
-    }
-    with httpx.Client(timeout=60.0) as client:
-        resp = client.post(OPENROUTER_URL, headers=_headers(), json=body)
-        resp.raise_for_status()
-        return _extract(resp.json())
+def _decode_data_url(data_url: str) -> Image.Image:
+    """Decode a ``data:image/...;base64,...`` URL into an RGB PIL image."""
+    try:
+        _, b64 = data_url.split(",", 1)
+    except ValueError as exc:
+        raise ValueError("malformed data URL") from exc
+    try:
+        raw = base64.b64decode(b64, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("invalid base64 image payload") from exc
+    try:
+        return Image.open(BytesIO(raw)).convert("RGB")
+    except (UnidentifiedImageError, OSError) as exc:
+        raise ValueError("could not decode image bytes") from exc
 
 
-async def embed_text_async(
-    client: httpx.AsyncClient,
-    text: str,
-    semaphore: asyncio.Semaphore | None = None,
-) -> list[float]:
-    """Async text-only embedding (used to embed the 5 mood descriptions)."""
-    body = {
-        "model": EMBED_MODEL,
-        "input": [{"content": [{"type": "text", "text": text}]}],
-        "encoding_format": "float",
-    }
-    if semaphore is not None:
-        async with semaphore:
-            resp = await client.post(OPENROUTER_URL, headers=_headers(), json=body)
-    else:
-        resp = await client.post(OPENROUTER_URL, headers=_headers(), json=body)
-    resp.raise_for_status()
-    return _extract(resp.json())
-
-
-async def embed_visual_query(
-    client: httpx.AsyncClient,
-    image_data_url: str,
-    semaphore: asyncio.Semaphore | None = None,
-) -> list[float]:
-    """Embed an image into a query vector."""
-    body = {
-        "model": EMBED_MODEL,
-        "input": [
-            {
-                "content": [
-                    {"type": "image_url", "image_url": {"url": image_data_url}},
-                ]
-            }
-        ],
-        "encoding_format": "float",
-    }
-    if semaphore is not None:
-        async with semaphore:
-            resp = await client.post(OPENROUTER_URL, headers=_headers(), json=body)
-    else:
-        resp = await client.post(OPENROUTER_URL, headers=_headers(), json=body)
-    resp.raise_for_status()
-    return _extract(resp.json())
-
-
-def _average(vectors: list[list[float]]) -> list[float]:
-    """Element-wise mean of equal-length embedding vectors."""
-    if not vectors:
-        raise ValueError("cannot average an empty list of vectors")
+def embed_frames(image_data_urls: list[str]) -> list[float]:
+    """Embed every frame with TinyCLIP, then average into one query vector."""
+    if not image_data_urls:
+        raise ValueError("no frames to embed")
+    model = get_model()
+    vectors = [
+        np.asarray(model.encode(_decode_data_url(url)), dtype=np.float32)
+        for url in image_data_urls
+    ]
     if len(vectors) == 1:
-        return vectors[0]
-    count = len(vectors)
-    dim = len(vectors[0])
-    return [sum(vec[i] for vec in vectors) / count for i in range(dim)]
-
-
-async def embed_visual_frames(
-    client: httpx.AsyncClient,
-    image_data_urls: list[str],
-    semaphore: asyncio.Semaphore | None = None,
-) -> list[float]:
-    """Embed every frame, then average into one query vector."""
-    vectors = await asyncio.gather(
-        *[
-            embed_visual_query(client, url, semaphore)
-            for url in image_data_urls
-        ]
-    )
-    return _average(list(vectors))
+        return vectors[0].tolist()
+    return np.mean(vectors, axis=0).tolist()
