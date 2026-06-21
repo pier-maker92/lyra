@@ -166,3 +166,12 @@ overrides:
   markdown-it: ">=14.2.0"
   "@babel/core": "^7.29.6"
   "@babel/template": "^7.0.0"
+
+# react-native-worklets' babel plugin does an undeclared `require('@babel/generator')`
+# and relied on it being hoisted. The @babel/core security override above split the
+# dependency tree so @babel/generator is no longer hoisted, breaking Metro bundling
+# (Expo build) with "Cannot find module '@babel/generator'". Declare it explicitly.
+packageExtensions:
+  react-native-worklets:
+    dependencies:
+      "@babel/generator": "^7.29.6"

@@ -157,6 +157,8 @@ overrides:
   '@babel/core': ^7.29.6
   '@babel/template': ^7.0.0
 
+packageExtensionsChecksum: sha256-S98k+12hqH4hhnABNH1HzGv2Kg38oKu80Ku9hGs83dY=
+
 importers:
 
   .:
@@ -10944,6 +10946,7 @@ snapshots:
   react-native-worklets@0.5.1(@babel/core@7.29.7)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0):
     dependencies:
       '@babel/core': 7.29.7
+      '@babel/generator': 7.29.7
       '@babel/plugin-transform-arrow-functions': 7.29.7(@babel/core@7.29.7)
       '@babel/plugin-transform-class-properties': 7.29.7(@babel/core@7.29.7)
       '@babel/plugin-transform-classes': 7.29.7(@babel/core@7.29.7)
