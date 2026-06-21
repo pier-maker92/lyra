@@ -54,6 +54,9 @@ function getSession(
       await asset.downloadAsync();
       const uri = asset.localUri ?? asset.uri;
       const res = await fetch(uri);
+      if (!res.ok) {
+        throw new Error(`failed to fetch ONNX model: ${res.status} ${res.statusText}`);
+      }
       const bytes = new Uint8Array(await res.arrayBuffer());
       return ort.InferenceSession.create(bytes, {
         executionProviders: ["wasm"],
@@ -77,13 +80,17 @@ async function decode(dataUrl: string): Promise<Rgba> {
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("could not get 2d canvas context");
   ctx.drawImage(img, 0, 0);
-  const { data, width, height } = ctx.getImageData(
-    0,
-    0,
-    canvas.width,
-    canvas.height,
-  );
-  return { data, width, height };
+  try {
+    const { data, width, height } = ctx.getImageData(
+      0,
+      0,
+      canvas.width,
+      canvas.height,
+    );
+    return { data, width, height };
+  } catch (err) {
+    throw new Error(`failed to get image data (possibly tainted canvas): ${err}`);
+  }
 }
 
 export async function embedImages(dataUrls: string[]): Promise<Float32Array[]> {

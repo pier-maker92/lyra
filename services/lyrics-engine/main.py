@@ -186,6 +186,11 @@ async def analyze(req: AnalyzeRequest) -> dict[str, list[LyricMatch]]:
             return_exceptions=True,
         )
 
+    # Log any exceptions encountered during fetch
+    for i, data in enumerate(fetched):
+        if isinstance(data, Exception):
+            print(f"Error fetching track {needed[i]}: {type(data).__name__} - {data}")
+
     tracks: dict[str, TrackData] = {
         track_id: data
         for track_id, data in zip(needed, fetched)
