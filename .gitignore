@@ -48,9 +48,3 @@ Thumbs.db
 .cache/
 .local/
 services/lyrics-engine/lyrics_catalog_db/
-
-# uv lockfile: intentionally NOT committed.
-# The deploy build mirror has unpredictable version gaps; committing a frozen
-# lock pins exact versions the mirror may lack, breaking the publish build.
-# Leaving it out lets the build resolve fresh against whatever the mirror has.
-uv.lock

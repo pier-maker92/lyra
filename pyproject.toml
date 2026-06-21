@@ -15,10 +15,21 @@ dependencies = [
     "transformers>=4.45,<6",
 ]
 
+[tool.uv]
+# The deploy build's pip mirror has unpredictable gaps (misses arbitrary versions
+# of packages like sentence-transformers). Adding the public PyPI index and using
+# "unsafe-best-match" lets uv consider versions across ALL indexes and pick one that
+# actually exists, instead of failing on a version the mirror happens to lack.
+index-strategy = "unsafe-best-match"
+
 [[tool.uv.index]]
 explicit = true
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
+
+[[tool.uv.index]]
+name = "pypi-public"
+url = "https://pypi.org/simple"
 
 [tool.uv.sources]
 AA-module = [{ index = "pytorch-cpu", marker = "platform_system == 'Linux'" }]

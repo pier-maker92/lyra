@@ -63,27 +63,28 @@ thus sentence-transformers 5.6.0) is unsatisfiable, and the publish build fails 
 still fails, because the build re-resolves fresh. To reproduce the build faithfully, `rm uv.lock &&
 uv lock` from scratch and confirm there are NO `python_full_version == '3.12'/'3.13'` markers left.
 
-## Deploy build pypi mirror has UNPREDICTABLE version GAPS — never pin Python deps; do not commit uv.lock
+## Deploy build pypi MIRROR has gaps — fix = declare public pypi.org index + commit a lock pinned to it
 The publish build resolves Python deps against a Replit pypi mirror whose available-versions set is
-**inconsistent and changes between builds** — it is missing arbitrary specific versions, NOT simply
-"behind latest." Observed for sentence-transformers across consecutive builds minutes apart: one build
-had only `<5.6.0` (5.6.0 missing), the next had only `<5.5.1` plus `>=5.6.0` (5.5.1 missing). So
-pinning the newest fails, and pinning the second-newest ALSO fails — chasing an exact version is
-whack-a-mole. Symptom: `uv sync` fails "Because only <pkg> <X / >=Y are available and your project
-depends on ... we can conclude requirements are unsatisfiable." `uv lock` in the same build prints
-"Resolved" fast because it just validates the COMMITTED lock; `uv sync` does the real index query.
-**NOT reproducible locally** — the dev container reaches fresh pypi.org (all versions present), so any
-local `uv lock`/`uv sync` passes while the deploy build fails.
-**Fix that works (robust, not rigid):** (1) in root `pyproject.toml` use LOOSE ranges, not exact pins
-(e.g. `sentence-transformers>=5.0`, `transformers>=4.45`, `chromadb>=1.4,<2`); (2) DO NOT commit
-`uv.lock` — it is in `.gitignore` and removed from the repo. With no committed lock, the build's own
-`uv lock` resolves FRESH against its mirror and can only pick versions the mirror actually lists, so
-sync always succeeds. A committed lock pins exact versions the mirror may lack → failure.
-**Do not "fix" this by re-pinning versions or re-committing uv.lock.** torch is separate (pytorch-cpu
-index download.pytorch.org), reliable, never the cause.
-**Tradeoff:** deploy dep versions are non-deterministic across builds; acceptable here vs. broken
-publish. Engine only needs a sentence-transformers/transformers that can load the 512-dim TinyCLIP
-model — minor version drift is fine.
+**inconsistent and missing arbitrary versions** (NOT simply "behind latest"). Observed for
+sentence-transformers across consecutive builds: only `<5.6.0`; then `<5.5.1` + `>=5.6.0`; then
+`<5.0` + `>=6` (entire 5.x line gone). Symptom: `uv sync` fails "only <pkg> <X / >=Y are available
+and your project depends on ... unsatisfiable." **NOT reproducible locally** — the dev container
+reaches fresh pypi.org which has every version, so local `uv lock`/`uv sync` always pass.
+**Two things that DID NOT work (don't repeat):** (a) pinning exact / second-newest versions — the
+mirror's gap moves every build; (b) removing the committed `uv.lock` to force a "fresh" resolve — the
+build's fresh `uv lock` still resolves against the same gappy mirror and `uv sync` still fails.
+**Fix that works:** make uv use the REAL public PyPI, not just the mirror.
+  1. `pyproject.toml` `[tool.uv]` → `index-strategy = "unsafe-best-match"` (lets uv consider versions
+     across ALL indexes, not just the first one that has the package).
+  2. add an explicit `[[tool.uv.index]] name = "pypi-public" url = "https://pypi.org/simple"` (so
+     pypi.org/simple is a KNOWN registry uv can pull from and the lock can reference).
+  3. keep `pytorch-cpu` index `explicit = true` for torch only (it is reliable, never the cause).
+  4. COMMIT `uv.lock` (it is NOT gitignored). Generated locally, every package entry records
+     `source = { registry = "https://pypi.org/simple" }`, so the build's `uv sync` downloads each
+     package directly from pypi.org, bypassing the gappy mirror entirely → deterministic + reliable.
+Loose ranges in `[project].dependencies` are fine/kept, but the committed lock is what guarantees the
+build pulls existing versions from pypi.org. Engine only needs any sentence-transformers/transformers
+that can load the 512-dim TinyCLIP model, so minor drift is harmless.
 
 ## Embedding/retrieval note
 The image query is PURELY visual (no text prompt; video = average of frame vectors).
