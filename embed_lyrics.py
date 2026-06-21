@@ -23,8 +23,15 @@ def is_too_repetitive(text: str) -> bool:
     if not words:
         return True
 
-    clean_words = [re.sub(r"[^\w\s]", "", w) for w in words]
-    clean_words = [w for w in clean_words if w]
+    # Strip punctuation, then expand hyphenated tokens (e.g. "ah-ah" → ["ah", "ah"])
+    raw_clean = [re.sub(r"[^\w\s-]", "", w) for w in words]
+    clean_words: list[str] = []
+    for w in raw_clean:
+        if "-" in w:
+            parts = [p for p in w.split("-") if p]
+            clean_words.extend(parts if parts else [w])
+        elif w:
+            clean_words.append(w)
 
     if not clean_words:
         return True
@@ -33,17 +40,46 @@ def is_too_repetitive(text: str) -> bool:
     vocalizations = {
         "oh",
         "ah",
+        "aah",
         "la",
         "na",
         "eh",
         "yeah",
+        "yea",
         "ooh",
+        "oou",
+        "ouu",
         "hey",
         "uh",
+        "huh",
         "da",
         "doo",
         "dum",
         "eeeh",
+        "mm",
+        "mmm",
+        "mhm",
+        "hmm",
+        "hm",
+        "mmh",
+        "woo",
+        "wop",
+        "hah",
+        "ha",
+        "no",
+        "yo",
+        "ayy",
+        "aye",
+        "bam",
+        "whoa",
+        "woah",
+        "pow",
+        "skrrt",
+        "brr",
+        "grrt",
+        "skrt",
+        "blrrd",
+        "shh",
     }
 
     if all(w in vocalizations for w in unique_clean):
@@ -63,8 +99,8 @@ def is_too_repetitive(text: str) -> bool:
 def get_length_bin(text: str) -> str:
     """Calcola il bin della lunghezza in caratteri con step 25."""
     length = len(text)
-    if length >= 150:
-        return ">150"
+    if length >= 300:
+        return ">300"
     lower = (length // 25) * 25
     upper = lower + 25
     return f"{lower}-{upper}"
@@ -118,7 +154,7 @@ def main():
     parser.add_argument(
         "--model",
         type=str,
-        default="nvidia/llama-nemotron-embed-vl-1b-v2",
+        default="wkcn/TinyCLIP-ViT-8M-16-Text-3M-YFCC15M",
         help="SentenceTransformer model name to use for embeddings (e.g. wkcn/TinyCLIP-ViT-8M-16-Text-3M-YFCC15M)",
     )
     args = parser.parse_args()
@@ -166,6 +202,13 @@ def main():
             except (KeyError, TypeError):
                 pass
 
+            # Extract explicit flag
+            explicit = 0
+            try:
+                explicit = int(bool(track_data["track_data"]["explicit"]))
+            except (KeyError, TypeError, ValueError):
+                pass
+
             lyrics_txt = track_data.get("lyrics_txt", "")
             if not lyrics_txt:
                 continue
@@ -182,6 +225,16 @@ def main():
                     continue
                 seen_ids.add(chunk_id)
 
+                # Escludi le stanze specifiche richieste
+                raw_single_line = stanza.replace("\n", " / ").strip()
+                if raw_single_line in {
+                    "Ah-ah, ah-ah / Ah-ah, ah-ah-ah",
+                    "Take me to the river / Yeah, yeah, yeah, yeah",
+                    "Uh, uh, uh / This (uh, uh) is (uh, uh), ouu!",
+                    "Ah-ah, ah-ah / Ah-ah, ah-ah"
+                }:
+                    continue
+
                 cleaned_stanza = clean_stanza(stanza)
 
                 # Scarta se vuota o troppo ripetitiva
@@ -189,16 +242,16 @@ def main():
                     continue
 
                 length_bin = get_length_bin(cleaned_stanza)
+                metadata = {
+                    "genre": genre,
+                    "language": language,
+                    "length_bin": length_bin,
+                    "explicit": explicit,
+                }
 
                 all_stanzas.append(cleaned_stanza)
                 all_ids.append(chunk_id)
-                all_metadatas.append(
-                    {
-                        "genre": genre,
-                        "language": language,
-                        "length_bin": length_bin,
-                    }
-                )
+                all_metadatas.append(metadata)
 
         except Exception as e:
             print(f"Error processing track {i}: {e}")
@@ -209,7 +262,6 @@ def main():
 
     print(f"Embedding all stanzas (batch_size={args.batch_size})...")
 
-    # Second pass: Embed all stanzas at once to utilize SentenceTransformer optimizations
     embeddings = encode_documents(
         model,
         all_stanzas,
