@@ -1134,7 +1134,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27,<1" },
     { name = "numpy", specifier = ">=2.0,<3" },
     { name = "pillow", specifier = ">=10,<14" },
-    { name = "sentence-transformers", specifier = ">=5.0,<6" },
+    { name = "sentence-transformers", path = "vendor/sentence_transformers-5.6.0-py3-none-any.whl" },
     { name = "torch", marker = "sys_platform != 'linux'", specifier = ">=2.4,<3" },
     { name = "torch", marker = "sys_platform == 'linux'", specifier = ">=2.4,<3", index = "https://download.pytorch.org/whl/cpu" },
     { name = "transformers", specifier = ">=4.45,<6" },
@@ -1286,7 +1286,7 @@ wheels = [
 [[package]]
 name = "sentence-transformers"
 version = "5.6.0"
-source = { registry = "https://pypi.org/simple" }
+source = { path = "vendor/sentence_transformers-5.6.0-py3-none-any.whl" }
 dependencies = [
     { name = "huggingface-hub" },
     { name = "numpy" },
@@ -1298,10 +1298,40 @@ dependencies = [
     { name = "transformers" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f9/56/d2cb00765a6b15c994a7fccf20f9032f16e8193ca49147cb5155166ad744/sentence_transformers-5.6.0.tar.gz", hash = "sha256:0e7164d051e416c1853ade7c274ff52af3f9da0f4be7f0b83d734c27699e1057", size = 453194, upload-time = "2026-06-16T14:01:56.42Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/76/c1/dc1582b79e9a2eb0cddf9559cd9bcdff084f541d6fe881fdd9d98630dba7/sentence_transformers-5.6.0-py3-none-any.whl", hash = "sha256:d2075b5e687a1611005e20ab04a6846994d51adfcf39610aed066af3c0c0b81f", size = 596411, upload-time = "2026-06-16T14:01:55.103Z" },
+    { filename = "sentence_transformers-5.6.0-py3-none-any.whl", hash = "sha256:d2075b5e687a1611005e20ab04a6846994d51adfcf39610aed066af3c0c0b81f" },
 ]
+
+[package.metadata]
+requires-dist = [
+    { name = "accelerate", marker = "extra == 'dev'", specifier = ">=0.20.3" },
+    { name = "accelerate", marker = "extra == 'train'", specifier = ">=0.20.3" },
+    { name = "datasets", marker = "extra == 'dev'", specifier = ">=2.0.0" },
+    { name = "datasets", marker = "extra == 'train'", specifier = ">=2.0.0" },
+    { name = "huggingface-hub", specifier = ">=0.23.0" },
+    { name = "numpy", specifier = ">=1.20.0" },
+    { name = "optimum-intel", extras = ["openvino"], marker = "extra == 'openvino'" },
+    { name = "optimum-onnx", extras = ["onnxruntime"], marker = "extra == 'onnx'" },
+    { name = "optimum-onnx", extras = ["onnxruntime-gpu"], marker = "extra == 'onnx-gpu'" },
+    { name = "peft", marker = "extra == 'dev'" },
+    { name = "pre-commit", marker = "extra == 'dev'" },
+    { name = "pytest", marker = "extra == 'dev'" },
+    { name = "pytest-cov", marker = "extra == 'dev'" },
+    { name = "pytest-env", marker = "extra == 'dev'" },
+    { name = "pytest-subtests", marker = "extra == 'dev'" },
+    { name = "pytest-xdist", marker = "extra == 'dev'" },
+    { name = "scikit-learn", specifier = ">=0.22.0" },
+    { name = "scipy", specifier = ">=1.0.0" },
+    { name = "torch", specifier = ">=1.11.0" },
+    { name = "tqdm", specifier = ">=4.0.0" },
+    { name = "transformers", specifier = ">=4.41.0,<6.0.0" },
+    { name = "transformers", extras = ["audio"], marker = "extra == 'audio'" },
+    { name = "transformers", extras = ["audio", "video", "vision"], marker = "extra == 'dev'" },
+    { name = "transformers", extras = ["video"], marker = "extra == 'video'" },
+    { name = "transformers", extras = ["vision"], marker = "extra == 'image'" },
+    { name = "typing-extensions", specifier = ">=4.5.0" },
+]
+provides-extras = ["image", "audio", "video", "train", "onnx", "onnx-gpu", "openvino", "dev"]
 
 [[package]]
 name = "setuptools"

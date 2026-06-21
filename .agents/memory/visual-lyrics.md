@@ -63,28 +63,31 @@ thus sentence-transformers 5.6.0) is unsatisfiable, and the publish build fails 
 still fails, because the build re-resolves fresh. To reproduce the build faithfully, `rm uv.lock &&
 uv lock` from scratch and confirm there are NO `python_full_version == '3.12'/'3.13'` markers left.
 
-## Deploy build pypi MIRROR has gaps — fix = declare public pypi.org index + commit a lock pinned to it
-The publish build resolves Python deps against a Replit pypi mirror whose available-versions set is
-**inconsistent and missing arbitrary versions** (NOT simply "behind latest"). Observed for
-sentence-transformers across consecutive builds: only `<5.6.0`; then `<5.5.1` + `>=5.6.0`; then
-`<5.0` + `>=6` (entire 5.x line gone). Symptom: `uv sync` fails "only <pkg> <X / >=Y are available
-and your project depends on ... unsatisfiable." **NOT reproducible locally** — the dev container
-reaches fresh pypi.org which has every version, so local `uv lock`/`uv sync` always pass.
-**Two things that DID NOT work (don't repeat):** (a) pinning exact / second-newest versions — the
-mirror's gap moves every build; (b) removing the committed `uv.lock` to force a "fresh" resolve — the
-build's fresh `uv lock` still resolves against the same gappy mirror and `uv sync` still fails.
-**Fix that works:** make uv use the REAL public PyPI, not just the mirror.
-  1. `pyproject.toml` `[tool.uv]` → `index-strategy = "unsafe-best-match"` (lets uv consider versions
-     across ALL indexes, not just the first one that has the package).
-  2. add an explicit `[[tool.uv.index]] name = "pypi-public" url = "https://pypi.org/simple"` (so
-     pypi.org/simple is a KNOWN registry uv can pull from and the lock can reference).
-  3. keep `pytorch-cpu` index `explicit = true` for torch only (it is reliable, never the cause).
-  4. COMMIT `uv.lock` (it is NOT gitignored). Generated locally, every package entry records
-     `source = { registry = "https://pypi.org/simple" }`, so the build's `uv sync` downloads each
-     package directly from pypi.org, bypassing the gappy mirror entirely → deterministic + reliable.
-Loose ranges in `[project].dependencies` are fine/kept, but the committed lock is what guarantees the
-build pulls existing versions from pypi.org. Engine only needs any sentence-transformers/transformers
-that can load the 512-dim TinyCLIP model, so minor drift is harmless.
+## Deploy build pip MIRROR is CORRUPT for sentence-transformers — fix = VENDOR the wheel (local path source)
+The publish build resolves Python deps against a Replit pip MIRROR (not real pypi.org) and **cannot be
+pointed at pypi.org** — adding `[[tool.uv.index]] pypi-public` + `index-strategy = unsafe-best-match`
+had ZERO effect (the build ignores/cannot reach pypi.org; the error stayed byte-identical). The mirror's
+metadata for `sentence-transformers` is **wrong**: it advertises phantom `>=6` versions that do not
+exist on real pypi (real max is 5.6.0) and HIDES the entire real `5.x` line, reporting only `<5.0` and
+`>=6` available. Symptom: `uv sync` → "only sentence-transformers <5.0 and >=6 are available ...
+unsatisfiable." **NOT reproducible locally** (dev reaches real pypi.org).
+**Hard constraint that removes every version-juggling escape:** the TinyCLIP model
+(`wkcn/TinyCLIP-ViT-8M-16-Text-3M-YFCC15M`) loads ONLY under sentence-transformers **5.x**. 4.x raises
+`AttributeError: 'CLIPConfig' object has no attribute 'hidden_size'` (no CLIP handling); 6.x does not
+exist. So the one required line (5.x) is exactly the one the mirror refuses to serve.
+**Things that DID NOT work (do not retry):** pinning exact 5.x versions; removing `uv.lock` for a fresh
+resolve; adding a public-pypi index + unsafe-best-match; committing a lock with `registry=pypi.org`
+sources (build re-resolves during `uv sync` and ignores the recorded registry).
+**Fix that WORKS:** vendor the wheel. `sentence-transformers` is pure-Python (~600KB, `py3-none-any`).
+  1. `python -m pip download sentence-transformers==5.6.0 --no-deps -d vendor/` (committed to git).
+  2. In `pyproject.toml` `[tool.uv.sources]` add:
+     `sentence-transformers = { path = "vendor/sentence_transformers-5.6.0-py3-none-any.whl" }`.
+  3. uv installs it from the local file (lock records `source = { path = ... }`), zero mirror/network
+     dependency for that package. Its deps (transformers/torch) still come from the mirror — they were
+     NEVER the failing package, the mirror has them.
+**Verified:** vendored 5.6.0 query embedding is bit-identical to the prior 5.6.0 (cosine 1.0,
+max_abs_diff 0.0), so retrieval is unchanged. If a future build fails on a DIFFERENT package with the
+same phantom-version signature, vendor that wheel too (same recipe) — do not chase versions.
 
 ## Embedding/retrieval note
 The image query is PURELY visual (no text prompt; video = average of frame vectors).
