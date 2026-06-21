@@ -37,6 +37,22 @@ model each time, so the first `/api/analyze` after a cold start is slow (model w
 lifespan; the port binds immediately so it's latency, not ECONNREFUSED). Switch the deployment
 to `vm` (always-on) if cold-start latency becomes a problem.
 
+## Engine Python deps must be declared in root pyproject.toml (prod-only crash)
+**Why:** the dev `.pythonlibs` had `numpy`/`pillow`/`sentence-transformers`/`torch`/`transformers`
+installed ad-hoc, so the engine ran locally — but they were NOT in root `pyproject.toml`
+`[project].dependencies`. Production deploy installs ONLY locked/declared deps, so uvicorn
+crashed importing `embeddings.py` (ImportError) → engine never bound 8000 → `/api/analyze`
+still 502'd with ECONNREFUSED even after the sidecar launcher was wired in.
+**How to apply:** anything `services/lyrics-engine/*.py` imports at module load must be a declared
+root dependency, and `uv.lock` must be regenerated (`uv lock`). After ANY engine import change,
+re-lock and redeploy.
+**Two uv gotchas hit here:** (1) the giant `[tool.uv.sources]` block pins many names to the
+`pytorch-cpu` index (`explicit=true`, download.pytorch.org/whl/cpu). That index only hosts
+torch-family wheels — mapping `sentence-transformers`/`transformers` there makes uv unable to
+find recent versions ("only <X available"). Keep ONLY `torch` mapped to pytorch-cpu; let the
+rest resolve from PyPI. (2) `requires-python` was `>=3.11` which forced resolution for 3.14+
+where sentence-transformers 5.6.0 has no wheel; capped to `>=3.11,<3.14` (runtime is 3.11).
+
 ## Embedding/retrieval note
 The image query is PURELY visual (no text prompt; video = average of frame vectors).
 Embeddings are computed LOCALLY with TinyCLIP (no OpenRouter/network) — see
