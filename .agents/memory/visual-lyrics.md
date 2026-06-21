@@ -63,20 +63,27 @@ thus sentence-transformers 5.6.0) is unsatisfiable, and the publish build fails 
 still fails, because the build re-resolves fresh. To reproduce the build faithfully, `rm uv.lock &&
 uv lock` from scratch and confirm there are NO `python_full_version == '3.12'/'3.13'` markers left.
 
-## Deploy build pypi mirror LAGS the latest release — never pin a dep to the absolute newest
-The deploy publish build resolves Python deps against a Replit pypi mirror/cache that is slightly
-BEHIND real pypi.org: it has every version EXCEPT the very newest release of each package. Symptom:
-publish build `uv sync` fails "Because only <pkg> < X.Y.Z is available and your project depends on
->= X.Y.Z" even though `uv lock` in the same build "succeeds" (lock step only validates the committed
-lock structurally; sync does the real index query and discovers the newest version is missing).
-**This is NOT reproducible locally** — the local container reaches fresh pypi.org which HAS the
-newest, so local `uv lock`/`uv sync`/`--no-cache --refresh` all pass while the deploy build fails.
-**Rule:** in root `pyproject.toml`, do not pin any dependency to its current absolute-latest pypi
-version. Cap each heavy/edge dep to a range ending just below latest, e.g. `>=5.5.1,<5.6.0`, so the
-lock pins the second-newest version (which the lagging mirror has). torch is exempt — it comes from
-the separate `pytorch-cpu` index (download.pytorch.org), not the lagging mirror.
-**How to apply:** for each dep, `curl -s https://pypi.org/pypi/<pkg>/json` to get the latest +
-prior versions; if your pin == latest, change it to `>=<second-newest>,<<latest>` and `uv lock`.
+## Deploy build pypi mirror has UNPREDICTABLE version GAPS — never pin Python deps; do not commit uv.lock
+The publish build resolves Python deps against a Replit pypi mirror whose available-versions set is
+**inconsistent and changes between builds** — it is missing arbitrary specific versions, NOT simply
+"behind latest." Observed for sentence-transformers across consecutive builds minutes apart: one build
+had only `<5.6.0` (5.6.0 missing), the next had only `<5.5.1` plus `>=5.6.0` (5.5.1 missing). So
+pinning the newest fails, and pinning the second-newest ALSO fails — chasing an exact version is
+whack-a-mole. Symptom: `uv sync` fails "Because only <pkg> <X / >=Y are available and your project
+depends on ... we can conclude requirements are unsatisfiable." `uv lock` in the same build prints
+"Resolved" fast because it just validates the COMMITTED lock; `uv sync` does the real index query.
+**NOT reproducible locally** — the dev container reaches fresh pypi.org (all versions present), so any
+local `uv lock`/`uv sync` passes while the deploy build fails.
+**Fix that works (robust, not rigid):** (1) in root `pyproject.toml` use LOOSE ranges, not exact pins
+(e.g. `sentence-transformers>=5.0`, `transformers>=4.45`, `chromadb>=1.4,<2`); (2) DO NOT commit
+`uv.lock` — it is in `.gitignore` and removed from the repo. With no committed lock, the build's own
+`uv lock` resolves FRESH against its mirror and can only pick versions the mirror actually lists, so
+sync always succeeds. A committed lock pins exact versions the mirror may lack → failure.
+**Do not "fix" this by re-pinning versions or re-committing uv.lock.** torch is separate (pytorch-cpu
+index download.pytorch.org), reliable, never the cause.
+**Tradeoff:** deploy dep versions are non-deterministic across builds; acceptable here vs. broken
+publish. Engine only needs a sentence-transformers/transformers that can load the 512-dim TinyCLIP
+model — minor version drift is fine.
 
 ## Embedding/retrieval note
 The image query is PURELY visual (no text prompt; video = average of frame vectors).
