@@ -19,14 +19,23 @@ See the mood-logic section below — the mood taxonomy is dynamic, NOT a fixed 5
   sentence-transformers, 512-dim, image-only query) + ChromaDB retrieval. Express
   proxies to `localhost:8000`. See lyrics-engine-tinyclip.md for the embedding details.
 
-## Production deploy caveat (important)
+## Production deploy caveat (important) — RESOLVED via sidecar launcher
 **Why:** `services/lyrics-engine` is run by a standalone Replit workflow, NOT registered
 as an artifact / not in any `artifact.toml`. Only artifacts deploy. So in a published
-backend, `/api/analyze` will fail because nothing serves port 8000.
-**How to apply:** Before deploying the backend to production, either (a) make the Python
-service an artifact.toml service, or (b) have Express spawn/host it. The Expo client
-itself (Expo Launch / App Store) is independent, but it points at the production API
-domain, so the backend must be fixed first or analysis breaks in prod.
+backend, `/api/analyze` fails with `ECONNREFUSED 127.0.0.1:8000` because nothing serves
+port 8000.
+**Fix in place:** the api-server's production run command is `artifacts/api-server/start-prod.sh`
+(set in its `artifact.toml` `[services.production.run]`). The script starts `uvicorn main:app`
+for the engine on `127.0.0.1:8000` as an in-container sidecar, then `exec node` for Express.
+Both run in the same autoscale container; Express reaches the engine over localhost.
+**Prereqs that make this work in prod (verify if it ever breaks again):** the ChromaDB
+`services/lyrics-engine/TinyCLAPdb/` (~217M) is git-tracked so it ships; `chromadb` +
+torch/sentence-transformers are root `pyproject.toml` deps so the platform `uv sync` installs
+them at deploy build; `MUSIXMATCH_API_KEY` is a global secret (available in prod).
+**Cold-start tradeoff:** on autoscale, scale-from-zero reloads the 217M Chroma index + TinyCLIP
+model each time, so the first `/api/analyze` after a cold start is slow (model warms in uvicorn
+lifespan; the port binds immediately so it's latency, not ECONNREFUSED). Switch the deployment
+to `vm` (always-on) if cold-start latency becomes a problem.
 
 ## Embedding/retrieval note
 The image query is PURELY visual (no text prompt; video = average of frame vectors).
